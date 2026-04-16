@@ -6,7 +6,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
-  useAnimatedStyle, useSharedValue, withTiming,
+  useAnimatedStyle, useSharedValue, withTiming, withDelay,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/theme/colors';
@@ -37,8 +37,8 @@ function CheckboxRow({ item, checked, onToggle, index }: CheckboxRowProps) {
 
   useEffect(() => {
     const delay = getStaggerDelay(index);
-    opacity.value = withTiming(1, { ...TIMING_ENTER, duration: TIMING_ENTER.duration + delay });
-    translateY.value = withTiming(0, { ...TIMING_ENTER, duration: TIMING_ENTER.duration + delay });
+    opacity.value = withDelay(delay, withTiming(1, TIMING_ENTER));
+    translateY.value = withDelay(delay, withTiming(0, TIMING_ENTER));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addBtnText: { ...typography.bodyMedium, color: '#FFFFFF' },
+  addBtnText: { ...typography.bodyMedium, color: '#FFFFFF', fontVariant: ['tabular-nums'] },
 
   // Error state
   errorContainer: {

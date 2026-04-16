@@ -76,7 +76,7 @@ Rules:
     const content = data.choices?.[0]?.message?.content ?? '';
 
     // Parse JSON — handle markdown code block wrapper
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    const jsonMatch = content.match(/\[[\s\S]*?\]/);
     if (!jsonMatch) return [];
 
     const parsed = JSON.parse(jsonMatch[0]);
