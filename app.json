@@ -1,11 +1,13 @@
 {
   "expo": {
-    "name": "MealkitTemp",
-    "slug": "MealkitTemp",
+    "name": "Mealkit",
+    "slug": "mealkit",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "scheme": "mealkit",
+    "platforms": ["ios"],
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -13,18 +15,27 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "com.mealkit.app",
+      "deploymentTarget": "17.0",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Mealkit needs camera access to scan your groceries.",
+        "NSPhotoLibraryUsageDescription": "Mealkit needs photo access to scan receipt images.",
+        "NSHealthShareUsageDescription": "Mealkit reads Health data to personalize nutrition recommendations.",
+        "NSHealthUpdateUsageDescription": "Mealkit writes your meal nutrition to Apple Health.",
+        "UIUserInterfaceStyle": "Dark",
+        "UIStatusBarStyle": "UIStatusBarStyleLightContent"
+      }
     },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    }
+    "plugins": [
+      "expo-router",
+      "expo-camera",
+      [
+        "react-native-health",
+        {
+          "isClinicalDataEnabled": false
+        }
+      ]
+    ]
   }
 }
