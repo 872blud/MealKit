@@ -194,6 +194,7 @@ Mealkit/
 - `expo-haptics`
 - `expo-constants`
 - `expo-image-picker` (fallback for photo mode)
+- `expo-keep-awake`
 - `react-native-reanimated`
 - `react-native-gesture-handler`
 - `react-native-safe-area-context`

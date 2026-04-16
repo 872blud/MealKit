@@ -1,2 +1,1 @@
-// placeholder
-export {};
+export const typography = {} as const;
