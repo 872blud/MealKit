@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CommonActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { colors } from '@/theme/colors';
@@ -24,9 +24,7 @@ const TABS = [
   },
 ] as const;
 
-function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-  const insets = useSafeAreaInsets();
-
+function CustomTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
   return (
     <View style={[styles.tabBar, { paddingBottom: insets.bottom }]}>
       {state.routes.map((route, index) => {
@@ -43,7 +41,10 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             canPreventDefault: true,
           });
           if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name);
+            navigation.dispatch({
+              ...CommonActions.navigate(route),
+              target: state.key,
+            });
           }
         };
 
@@ -52,7 +53,7 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             key={route.key}
             onPress={onPress}
             style={styles.tabItem}
-            accessibilityRole="button"
+            accessibilityRole="tab"
             accessibilityState={isFocused ? { selected: true } : {}}
             accessibilityLabel={tab.label}
           >
@@ -87,8 +88,6 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     ...typography.caption,
-    // Override uppercase from label preset — tabs use sentence case
-    textTransform: 'none',
   },
 });
 
