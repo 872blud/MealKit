@@ -26,7 +26,7 @@ function toTitleCase(str: string): string {
 function cleanProductName(name: string): string {
   // Remove size indicators and extra whitespace
   return name
-    .replace(/\b\d+\s*(pk|pack|oz|g|kg|ml|l|lb|lbs|ct|count)\b/gi, '')
+    .replace(/\b\d+\s*(fl\s+)?(pk|pack|oz|g|kg|ml|l|lb|lbs|ct|count)\b/gi, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -87,6 +87,9 @@ async function lookupOpenFoodFacts(barcode: string): Promise<BarcodeProduct | nu
 }
 
 async function lookupUSDA(barcode: string): Promise<BarcodeProduct | null> {
+  // Note: USDA FDC search API is a text search, not a true barcode/UPC lookup.
+  // Passing a barcode string rarely matches. This is a best-effort fallback.
+  // A USDA_API_KEY is required; returns null if key is absent or search yields no match.
   const apiKey = (Constants.expoConfig?.extra as Record<string, string> | undefined)?.usdaApiKey ?? '';
   if (!apiKey) return null;
   try {

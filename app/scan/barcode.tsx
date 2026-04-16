@@ -1,6 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, Pressable,
+  View, Text, TextInput, StyleSheet, ScrollView,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/theme/colors';
 import { spacing } from '@/theme/spacing';
 import { typography } from '@/theme/typography';
-import { TIMING_ENTER, getStaggerDelay } from '@/theme/animations';
+import { TIMING_ENTER } from '@/theme/animations';
 import PressableScale from '@/components/PressableScale';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import { lookupBarcode } from '@/services/barcode';
@@ -24,7 +24,7 @@ type ScannedItem = Ingredient & { pending?: boolean };
 
 // ─── ScannedItemRow — defined OUTSIDE screen so it isn't recreated on re-render ──
 
-function ScannedItemRow({ item }: { item: ScannedItem; index: number }) {
+function ScannedItemRow({ item }: { item: ScannedItem }) {
   const mounted = useRef(false);
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(8);
@@ -46,7 +46,7 @@ function ScannedItemRow({ item }: { item: ScannedItem; index: number }) {
     return (
       <Animated.View style={[styles.itemRow, style]}>
         <SkeletonLoader height={20} width="60%" borderRadius={4} />
-        <SkeletonLoader height={16} width="25%" borderRadius={4} style={{ marginTop: 4 }} />
+        <SkeletonLoader height={16} width="25%" borderRadius={4} />
       </Animated.View>
     );
   }
@@ -130,7 +130,7 @@ export default function BarcodeScanScreen() {
   const onDone = useCallback(() => {
     scannedItems
       .filter((item) => !item.pending && item.name)
-      .forEach((item) => addIngredient(item));
+      .forEach(({ id: _id, pending: _p, ...rest }) => addIngredient(rest));
     router.push('/ingredients');
   }, [scannedItems, addIngredient]);
 
@@ -182,15 +182,19 @@ export default function BarcodeScanScreen() {
       >
         <View style={[styles.bottomPanel, { paddingBottom: insets.bottom + spacing.md }]}>
           {/* List */}
-          <View style={styles.list}>
+          <ScrollView
+            style={styles.list}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             {scannedItems.length === 0 ? (
               <Text style={styles.emptyHint}>Point camera at a barcode</Text>
             ) : (
-              scannedItems.map((item, index) => (
-                <ScannedItemRow key={item.id} item={item} index={index} />
+              scannedItems.map((item) => (
+                <ScannedItemRow key={item.id} item={item} />
               ))
             )}
-          </View>
+          </ScrollView>
           {/* Manual input */}
           <TextInput
             style={styles.manualInput}
