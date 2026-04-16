@@ -36,18 +36,16 @@ export default function SkeletonLoader({
     opacity: opacity.value,
   }));
 
+  const staticStyle: ViewStyle = {
+    width: width as ViewStyle['width'],
+    height,
+    borderRadius,
+    backgroundColor: colors.surfaceElevated,
+  };
+
   return (
     <Animated.View
-      style={[
-        {
-          width: width as any,
-          height,
-          borderRadius,
-          backgroundColor: colors.surfaceElevated,
-        },
-        animatedStyle,
-        style,
-      ]}
+      style={[staticStyle, animatedStyle, style]}
     />
   );
 }

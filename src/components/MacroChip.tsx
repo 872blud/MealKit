@@ -12,16 +12,17 @@ interface MacroChipProps {
   size?: 'sm' | 'md';
 }
 
-const MACRO_CONFIG: Record<MacroType, { label: string; color: string; bg: string }> = {
-  protein: { label: 'P',   color: colors.protein, bg: colors.proteinDim },
-  carb:    { label: 'C',   color: colors.carb,    bg: colors.carbDim },
-  fat:     { label: 'F',   color: colors.fat,     bg: colors.fatDim },
-  fiber:   { label: 'Fi',  color: colors.fiber,   bg: colors.fiberDim },
-  cal:     { label: 'Cal', color: colors.text,    bg: colors.surfaceElevated },
+const MACRO_CONFIG: Record<MacroType, { label: string; color: string; bg: string; defaultUnit: string }> = {
+  protein: { label: 'P',   color: colors.protein,        bg: colors.proteinDim,      defaultUnit: 'g'    },
+  carb:    { label: 'C',   color: colors.carb,            bg: colors.carbDim,          defaultUnit: 'g'    },
+  fat:     { label: 'F',   color: colors.fat,              bg: colors.fatDim,            defaultUnit: 'g'    },
+  fiber:   { label: 'Fi',  color: colors.fiber,            bg: colors.fiberDim,          defaultUnit: 'g'    },
+  cal:     { label: 'Cal', color: colors.text,             bg: colors.surfaceElevated,  defaultUnit: 'kcal' },
 };
 
-export default function MacroChip({ macro, value, unit = 'g', size = 'md' }: MacroChipProps) {
+export default function MacroChip({ macro, value, unit, size = 'md' }: MacroChipProps) {
   const config = MACRO_CONFIG[macro];
+  const resolvedUnit = unit ?? config.defaultUnit;
   const isSm = size === 'sm';
 
   return (
@@ -36,7 +37,7 @@ export default function MacroChip({ macro, value, unit = 'g', size = 'md' }: Mac
         {config.label}
       </Text>
       <Text style={[styles.value, { color: config.color }, isSm && styles.valueSm]}>
-        {' '}{value}{unit}
+        {' '}{Math.round(value)}{resolvedUnit}
       </Text>
     </View>
   );

@@ -25,9 +25,11 @@ export default function PressableScale({
     transform: [{ scale: scale.value }],
   }));
 
+  const baseStyle: ViewStyle = { minWidth: 44, minHeight: 44 };
+
   return (
     <AnimatedPressable
-      style={[animatedStyle, style]}
+      style={[baseStyle, animatedStyle, style]}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       onPressIn={(e) => {
         scale.value = withTiming(scaleTo, TIMING_BUTTON);

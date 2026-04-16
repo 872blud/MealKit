@@ -7,7 +7,6 @@ export const typography = {
     fontWeight: '700' as const,
     letterSpacing: -0.5,
     lineHeight: 38,
-    color: undefined, // always set via style
   } satisfies TextStyle,
 
   // Title — screen headings
