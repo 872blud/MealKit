@@ -29,10 +29,10 @@ Rules:
 - Return a JSON array: [{"name": "...", "category": "..."}]
 - Return ONLY the JSON array, no other text`;
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); // 30s for vision
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000); // 30s for vision
 
+  try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       signal: controller.signal,
@@ -113,10 +113,10 @@ Rules:
 - Categories: produce, dairy, meat, seafood, grain, snack, beverage, condiment, frozen, other
 - Return ONLY the JSON array, no other text`;
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
 
+  try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       signal: controller.signal,
