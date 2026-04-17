@@ -62,3 +62,31 @@ export function trackRecipeGenerationSucceeded(recipeCount: number) {
 export function trackRecipeGenerationFailed() {
   posthog.capture('recipe_generation_failed');
 }
+
+// ─── Recipe deck ─────────────────────────────────────────────────────────────
+
+export function trackRecipesScreenViewed(recipeCount: number) {
+  posthog.capture('recipes_screen_viewed', { recipe_count: recipeCount });
+}
+
+export function trackRecipeSwiped(direction: 'left' | 'right', index: number) {
+  posthog.capture('recipe_swiped', { direction, index });
+}
+
+export function trackRecipeTapped(recipeId: string, index: number) {
+  posthog.capture('recipe_tapped', { recipe_id: recipeId, index });
+}
+
+export function trackRecipeSurpriseShuffled() {
+  posthog.capture('recipe_surprise_shuffled');
+}
+
+export function trackRecipeFilterApplied(filters: {
+  cuisine: string | null;
+  dietary: string | null;
+  cookTime: number | null;
+  difficulty: string | null;
+  hasCalorieRange: boolean;
+}) {
+  posthog.capture('recipe_filter_applied', filters);
+}
