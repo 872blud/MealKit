@@ -2,6 +2,11 @@ import Constants from 'expo-constants';
 import { Ingredient } from '@/stores/ingredientStore';
 import { Recipe, RecipeFilters } from '@/stores/recipeStore';
 import { UserPreferences } from '@/stores/userStore';
+import {
+  trackRecipeGenerationStarted,
+  trackRecipeGenerationSucceeded,
+  trackRecipeGenerationFailed,
+} from '@/services/analytics';
 
 function getKey(): string {
   return (Constants.expoConfig?.extra as Record<string, string> | undefined)?.anthropicApiKey ?? '';
@@ -153,14 +158,20 @@ export async function generateRecipes(
   if (!apiKey || ingredients.length === 0) return [];
 
   const prompt = buildPrompt(ingredients, filters, preferences);
+  trackRecipeGenerationStarted(ingredients.length);
 
   try {
-    return await callAPI(prompt, apiKey);
+    const recipes = await callAPI(prompt, apiKey);
+    trackRecipeGenerationSucceeded(recipes.length);
+    return recipes;
   } catch {
     // Retry once on failure
     try {
-      return await callAPI(prompt, apiKey);
+      const recipes = await callAPI(prompt, apiKey);
+      trackRecipeGenerationSucceeded(recipes.length);
+      return recipes;
     } catch {
+      trackRecipeGenerationFailed();
       return [];
     }
   }

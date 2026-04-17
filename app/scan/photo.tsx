@@ -15,6 +15,7 @@ import PressableScale from '@/components/PressableScale';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import { identifyCounterIngredients, ExtractedIngredient } from '@/services/openai';
 import { useIngredientStore } from '@/stores/ingredientStore';
+import { trackScanCompleted, trackScanFailed } from '@/services/analytics';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -36,24 +37,27 @@ interface RemovableRowProps {
 function RemovableRow({ item, onRemove, index }: RemovableRowProps) {
   const opacity = useSharedValue(0);
   const translateY = useSharedValue(8);
+  const scale = useSharedValue(0.95);
 
   useEffect(() => {
     const delay = getStaggerDelay(index);
     opacity.value = withDelay(delay, withTiming(1, TIMING_ENTER));
     translateY.value = withDelay(delay, withTiming(0, TIMING_ENTER));
+    scale.value = withDelay(delay, withTiming(1, TIMING_ENTER));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const animStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
+    transform: [{ translateY: translateY.value }, { scale: scale.value }],
   }));
 
   const handleRemove = useCallback(() => {
     opacity.value = withTiming(0, TIMING_EXIT);
     translateY.value = withTiming(-8, TIMING_EXIT);
+    scale.value = withTiming(0.95, TIMING_EXIT);
     setTimeout(() => onRemove(item.id), TIMING_EXIT.duration);
-  }, [item.id, onRemove, opacity, translateY]);
+  }, [item.id, onRemove, opacity, translateY, scale]);
 
   return (
     <Animated.View style={[styles.row, animStyle]}>
@@ -79,33 +83,14 @@ export default function PhotoScanScreen() {
   const insets = useSafeAreaInsets();
   const addIngredient = useIngredientStore((s) => s.addIngredient);
 
-  // Permission loading
-  if (!permission) {
-    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
-  }
-
-  // Permission denied
-  if (!permission.granted) {
-    return (
-      <View style={[styles.permissionContainer, { paddingTop: insets.top }]}>
-        <Ionicons name="camera-outline" size={48} color={colors.textDisabled} />
-        <Text style={styles.permissionTitle}>Camera Access Needed</Text>
-        <Text style={styles.permissionBody}>
-          Allow camera access to photograph your counter ingredients.
-        </Text>
-        <PressableScale onPress={requestPermission} style={styles.permissionBtn}>
-          <Text style={styles.permissionBtnText}>Grant Camera Access</Text>
-        </PressableScale>
-      </View>
-    );
-  }
-
-  const onCapture = async () => {
+  // ── Callbacks — declared before all early returns (Rules of Hooks) ────────
+  const onCapture = useCallback(async () => {
     const photo = await cameraRef.current?.takePictureAsync({ base64: true, quality: 0.8 });
     if (!photo?.base64) return;
     setScreenState('processing');
     const extracted = await identifyCounterIngredients(photo.base64);
     if (extracted.length === 0) {
+      trackScanFailed('photo');
       setScreenState('error');
     } else {
       setItems(
@@ -117,7 +102,7 @@ export default function PhotoScanScreen() {
       );
       setScreenState('review');
     }
-  };
+  }, []);
 
   const onRemove = useCallback((id: string) => {
     setItems((prev) => prev.filter((item) => item.id !== id));
@@ -137,8 +122,29 @@ export default function PhotoScanScreen() {
     items.forEach((item) =>
       addIngredient({ name: item.name, category: item.category, source: item.source })
     );
+    trackScanCompleted('photo', items.length);
     router.push('/ingredients');
   }, [items, addIngredient]);
+
+  // ── Permission guards ─────────────────────────────────────────────────────
+  if (!permission) {
+    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
+  }
+
+  if (!permission.granted) {
+    return (
+      <View style={[styles.permissionContainer, { paddingTop: insets.top }]}>
+        <Ionicons name="camera-outline" size={48} color={colors.textDisabled} />
+        <Text style={styles.permissionTitle}>Camera Access Needed</Text>
+        <Text style={styles.permissionBody}>
+          Allow camera access to photograph your counter ingredients.
+        </Text>
+        <PressableScale onPress={requestPermission} style={styles.permissionBtn}>
+          <Text style={styles.permissionBtnText}>Grant Camera Access</Text>
+        </PressableScale>
+      </View>
+    );
+  }
 
   // ── Processing ─────────────────────────────────────────────────────────────
   if (screenState === 'processing') {
@@ -270,7 +276,7 @@ export default function PhotoScanScreen() {
       {/* Capture button */}
       <View style={[styles.captureWrapper, { paddingBottom: insets.bottom + spacing.xl }]}>
         <PressableScale onPress={onCapture} style={styles.captureBtn} scaleTo={0.95}>
-          <Ionicons name="camera" size={32} color="#FFFFFF" />
+          <Ionicons name="camera" size={32} color={colors.onAccent} />
         </PressableScale>
       </View>
     </View>
@@ -413,7 +419,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addBtnText: { ...typography.bodyMedium, color: '#FFFFFF', fontVariant: ['tabular-nums'] },
+  addBtnText: { ...typography.bodyMedium, color: colors.onAccent, fontVariant: ['tabular-nums'] },
 
   // Error state
   errorContainer: {

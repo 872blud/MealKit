@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,13 @@ import { useUserStore, FREE_RECIPE_LIMIT } from '@/stores/userStore';
 import IngredientRow from '@/components/IngredientRow';
 import EmptyState from '@/components/EmptyState';
 import PressableScale from '@/components/PressableScale';
+import {
+  trackIngredientListViewed,
+  trackIngredientAddedManual,
+  trackIngredientRemoved,
+  trackGetRecipesTapped,
+  trackPaywallHit,
+} from '@/services/analytics';
 
 const SOURCE_ICONS: Record<Ingredient['source'], keyof typeof Ionicons.glyphMap> = {
   barcode: 'barcode-outline',
@@ -33,6 +40,11 @@ export default function IngredientsScreen() {
   const { recipeCount, incrementRecipeCount } = useUserStore();
   const [manualText, setManualText] = useState('');
   const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    trackIngredientListViewed(ingredients.length);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sourceCounts = ingredients.reduce<Partial<Record<Ingredient['source'], number>>>(
     (acc, i) => {
@@ -50,14 +62,22 @@ export default function IngredientsScreen() {
     const name = manualText.trim();
     if (!name) return;
     addIngredient({ name, category: 'other', source: 'manual' });
+    trackIngredientAddedManual();
     setManualText('');
+  };
+
+  const handleRemove = (id: string) => {
+    removeIngredient(id);
+    trackIngredientRemoved();
   };
 
   const handleGetRecipes = () => {
     if (recipeCount >= FREE_RECIPE_LIMIT) {
+      trackPaywallHit('recipe_limit');
       router.push('/paywall');
       return;
     }
+    trackGetRecipesTapped(ingredients.length);
     incrementRecipeCount();
     router.push('/recipes');
   };
@@ -131,7 +151,7 @@ export default function IngredientsScreen() {
                 key={ingredient.id}
                 ingredient={ingredient}
                 index={index}
-                onRemove={removeIngredient}
+                onRemove={handleRemove}
               />
             ))}
           </ScrollView>

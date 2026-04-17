@@ -19,6 +19,11 @@ import PressableScale from '@/components/PressableScale';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import { lookupBarcode } from '@/services/barcode';
 import { useIngredientStore, Ingredient } from '@/stores/ingredientStore';
+import {
+  trackBarcodeResolved,
+  trackBarcodeFailed,
+  trackScanCompleted,
+} from '@/services/analytics';
 
 type ScannedItem = Ingredient & { pending?: boolean };
 
@@ -93,6 +98,7 @@ export default function BarcodeScanScreen() {
 
     if (result) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      trackBarcodeResolved(result.name, result.category);
       setScannedItems((prev) =>
         prev.map((item) =>
           item.id === pendingId
@@ -109,6 +115,7 @@ export default function BarcodeScanScreen() {
       );
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      trackBarcodeFailed();
       // Remove the pending row on failure
       setScannedItems((prev) => prev.filter((item) => item.id !== pendingId));
       scannedBarcodes.current.delete(data); // allow retry
@@ -128,9 +135,9 @@ export default function BarcodeScanScreen() {
   }, [manualText]);
 
   const onDone = useCallback(() => {
-    scannedItems
-      .filter((item) => !item.pending && item.name)
-      .forEach(({ id: _id, pending: _p, ...rest }) => addIngredient(rest));
+    const resolved = scannedItems.filter((item) => !item.pending && item.name);
+    resolved.forEach(({ id: _id, pending: _p, ...rest }) => addIngredient(rest));
+    trackScanCompleted('barcode', resolved.length);
     router.push('/ingredients');
   }, [scannedItems, addIngredient]);
 

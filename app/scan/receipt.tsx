@@ -17,6 +17,7 @@ import PressableScale from '@/components/PressableScale';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import { extractReceiptIngredients, ExtractedIngredient } from '@/services/openai';
 import { useIngredientStore } from '@/stores/ingredientStore';
+import { trackScanCompleted, trackScanFailed } from '@/services/analytics';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,7 @@ export default function ReceiptScanScreen() {
     setScreenState('processing');
     const extracted = await extractReceiptIngredients(photo.base64);
     if (extracted.length === 0) {
+      trackScanFailed('receipt');
       setScreenState('error');
     } else {
       setItems(extracted);
@@ -121,9 +123,11 @@ export default function ReceiptScanScreen() {
   const checkedCount = checkedIds.size;
 
   const onAddToList = () => {
-    items
-      .filter((_, i) => checkedIds.has(i))
-      .forEach((item) => addIngredient({ name: item.name, category: item.category, source: 'receipt' }));
+    const selected = items.filter((_, i) => checkedIds.has(i));
+    selected.forEach((item) =>
+      addIngredient({ name: item.name, category: item.category, source: 'receipt' })
+    );
+    trackScanCompleted('receipt', selected.length);
     router.push('/ingredients');
   };
 
