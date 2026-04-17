@@ -9,6 +9,7 @@ import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { useRecipeStore } from '@/stores/recipeStore';
 import { useNutritionStore } from '@/stores/nutritionStore';
+import { useUserStore } from '@/stores/userStore';
 import {
   trackRecipeDetailViewed,
   trackCookingStarted,
@@ -78,6 +79,8 @@ export default function RecipeDetailScreen() {
   const recipes = useRecipeStore((s) => s.recipes);
   const recipe = recipes.find((r) => r.id === id);
   const logMeal = useNutritionStore((s) => s.logMeal);
+  const getDailyTotals = useNutritionStore((s) => s.getDailyTotals);
+  const preferences = useUserStore((s) => s.preferences);
 
   const [userServings, setUserServings] = useState<number>(recipe?.servings ?? 2);
   const [cooking, setCooking] = useState(false);
@@ -252,6 +255,17 @@ export default function RecipeDetailScreen() {
           </View>
         </Section>
 
+        {/* ── How this fits your day ──────────────────────── */}
+        <FitCard
+          addCalories={recipe.nutrition.calories * multiplier}
+          addProtein={recipe.nutrition.protein * multiplier}
+          addCarbs={recipe.nutrition.carbs * multiplier}
+          addFat={recipe.nutrition.fat * multiplier}
+          current={getDailyTotals(new Date().toISOString().slice(0, 10))}
+          calorieTarget={preferences.dailyCalorieTarget}
+          macroTargets={preferences.dailyMacroTargets}
+        />
+
         {/* ── Ingredients ─────────────────────────────────── */}
         <Section
           title={`Ingredients · ${recipe.ingredients.length}`}
@@ -375,6 +389,137 @@ function Stat({
       <Ionicons name={icon} size={16} color={colors.textSecondary} />
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value}</Text>
+    </View>
+  );
+}
+
+function FitCard({
+  addCalories,
+  addProtein,
+  addCarbs,
+  addFat,
+  current,
+  calorieTarget,
+  macroTargets,
+}: {
+  addCalories: number;
+  addProtein: number;
+  addCarbs: number;
+  addFat: number;
+  current: { calories: number; protein: number; carbs: number; fat: number };
+  calorieTarget: number;
+  macroTargets: { protein: number; carbs: number; fat: number };
+}) {
+  const projCal = current.calories + addCalories;
+  const overCal = projCal > calorieTarget;
+  const remainingCal = Math.round(calorieTarget - projCal);
+
+  return (
+    <View style={styles.fitCard}>
+      <View style={styles.fitHeader}>
+        <Ionicons name="pulse-outline" size={16} color={colors.accent} />
+        <Text style={styles.fitTitle}>How this fits today</Text>
+      </View>
+      <View style={styles.fitCalRow}>
+        <View style={styles.fitCalMain}>
+          <Text style={styles.fitCalAdd}>
+            +<Text style={styles.fitCalAddNum}>{Math.round(addCalories)}</Text> kcal
+          </Text>
+          <Text style={styles.fitCalAfter}>
+            brings you to{' '}
+            <Text style={styles.fitCalAfterNum}>{Math.round(projCal)}</Text>
+            {' / '}
+            <Text style={styles.fitCalAfterTarget}>{calorieTarget}</Text>
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.fitPill,
+            overCal ? styles.fitPillOver : styles.fitPillOk,
+          ]}
+        >
+          <Text
+            style={[
+              styles.fitPillText,
+              overCal ? styles.fitPillTextOver : styles.fitPillTextOk,
+            ]}
+          >
+            {overCal
+              ? `${Math.abs(remainingCal)} over`
+              : `${Math.max(0, remainingCal)} left`}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.fitMiniBars}>
+        <FitMiniBar
+          label="P"
+          color={colors.protein}
+          bg={colors.proteinDim}
+          current={current.protein}
+          added={addProtein}
+          target={macroTargets.protein}
+        />
+        <FitMiniBar
+          label="C"
+          color={colors.carb}
+          bg={colors.carbDim}
+          current={current.carbs}
+          added={addCarbs}
+          target={macroTargets.carbs}
+        />
+        <FitMiniBar
+          label="F"
+          color={colors.fat}
+          bg={colors.fatDim}
+          current={current.fat}
+          added={addFat}
+          target={macroTargets.fat}
+        />
+      </View>
+    </View>
+  );
+}
+
+function FitMiniBar({
+  label,
+  color,
+  bg,
+  current,
+  added,
+  target,
+}: {
+  label: string;
+  color: string;
+  bg: string;
+  current: number;
+  added: number;
+  target: number;
+}) {
+  const pCurrent = target > 0 ? Math.min(1, current / target) : 0;
+  const pProjected = target > 0 ? Math.min(1, (current + added) / target) : 0;
+
+  return (
+    <View style={styles.fitMini}>
+      <View style={styles.fitMiniHeader}>
+        <Text style={[styles.fitMiniLabel, { color }]}>{label}</Text>
+        <Text style={styles.fitMiniAdd}>
+          +{Math.round(added)}g
+        </Text>
+      </View>
+      <View style={[styles.fitMiniTrack, { backgroundColor: bg }]}>
+        <View
+          style={[
+            styles.fitMiniFillCurrent,
+            { backgroundColor: color, opacity: 0.45, width: `${pCurrent * 100}%` },
+          ]}
+        />
+        <View
+          style={[
+            styles.fitMiniFillProjected,
+            { backgroundColor: color, width: `${pProjected * 100}%` },
+          ]}
+        />
+      </View>
     </View>
   );
 }
@@ -560,6 +705,116 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
+  },
+  fitCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: spacing.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    gap: spacing.md,
+  },
+  fitHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  fitTitle: {
+    ...typography.smallMedium,
+    color: colors.textSecondary,
+  },
+  fitCalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  fitCalMain: {
+    flex: 1,
+    gap: 2,
+  },
+  fitCalAdd: {
+    ...typography.heading,
+    color: colors.accent,
+  },
+  fitCalAddNum: {
+    ...typography.heading,
+    color: colors.accent,
+    fontVariant: ['tabular-nums'],
+  },
+  fitCalAfter: {
+    ...typography.small,
+    color: colors.textSecondary,
+  },
+  fitCalAfterNum: {
+    ...typography.smallMedium,
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  fitCalAfterTarget: {
+    ...typography.smallMedium,
+    color: colors.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+  fitPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 100,
+  },
+  fitPillOk: {
+    backgroundColor: colors.accentDim,
+  },
+  fitPillOver: {
+    backgroundColor: colors.errorDim,
+  },
+  fitPillText: {
+    ...typography.monoSmall,
+  },
+  fitPillTextOk: {
+    color: colors.accent,
+  },
+  fitPillTextOver: {
+    color: colors.error,
+  },
+  fitMiniBars: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  fitMini: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  fitMiniHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+  },
+  fitMiniLabel: {
+    ...typography.monoSmall,
+  },
+  fitMiniAdd: {
+    ...typography.monoSmall,
+    color: colors.textSecondary,
+    fontSize: 11,
+  },
+  fitMiniTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  fitMiniFillCurrent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 3,
+  },
+  fitMiniFillProjected: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 3,
   },
   ingredientList: {
     gap: spacing.sm,
