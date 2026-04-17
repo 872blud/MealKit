@@ -93,6 +93,7 @@ Rules:
         category: String(item.category ?? 'other').trim().toLowerCase(),
       }));
   } catch {
+    clearTimeout(timeout);
     return [];
   }
 }
@@ -165,6 +166,7 @@ Rules:
         category: String(item.category ?? 'other').trim().toLowerCase(),
       }));
   } catch {
+    clearTimeout(timeout);
     return [];
   }
 }

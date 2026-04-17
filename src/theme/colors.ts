@@ -12,6 +12,7 @@ export const colors = {
   // Accent — the only green you actually SEE (10% usage rule)
   accent: '#3DB85A',           // Fresh confident green
   accentDim: 'rgba(61, 184, 90, 0.12)', // Accent background tint
+  onAccent: '#FFFFFF',         // Text/icons drawn ON the accent surface (pure white is correct here)
 
   // Borders — hairline, subtle
   border: 'rgba(255, 255, 255, 0.08)',   // Standard border
