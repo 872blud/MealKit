@@ -90,3 +90,25 @@ export function trackRecipeFilterApplied(filters: {
 }) {
   posthog.capture('recipe_filter_applied', filters);
 }
+
+// ─── Recipe detail + cooking ─────────────────────────────────────────────────
+
+export function trackRecipeDetailViewed(recipeId: string) {
+  posthog.capture('recipe_detail_viewed', { recipe_id: recipeId });
+}
+
+export function trackCookingStarted(recipeId: string) {
+  posthog.capture('cooking_started', { recipe_id: recipeId });
+}
+
+export function trackCookingStepAdvanced(recipeId: string, stepIndex: number) {
+  posthog.capture('cooking_step_advanced', { recipe_id: recipeId, step_index: stepIndex });
+}
+
+export function trackServingsAdjusted(recipeId: string, servings: number) {
+  posthog.capture('servings_adjusted', { recipe_id: recipeId, servings });
+}
+
+export function trackMealCooked(recipeId: string, servings: number) {
+  posthog.capture('meal_cooked', { recipe_id: recipeId, servings });
+}
