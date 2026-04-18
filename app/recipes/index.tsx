@@ -69,6 +69,7 @@ export default function RecipesScreen() {
   const [sheetVisible, setSheetVisible] = useState(false);
   const viewLoggedRef = useRef(false);
   const initRef = useRef(false);
+  const generatingRef = useRef(false);
 
   // Guard: if no ingredients, bounce back to ingredient list
   useEffect(() => {
@@ -80,27 +81,33 @@ export default function RecipesScreen() {
   const runGenerate = useCallback(
     async (overrideFilters?: RecipeFilters) => {
       if (ingredients.length === 0) return;
-      const proUser = await isPro().catch(() => false);
-      if (!proUser && useUserStore.getState().recipeCount >= getRecipeLimit()) {
-        await presentPaywall('recipe_limit_reached');
-        return;
-      }
-      const f = overrideFilters ?? filters;
-      setLoading(true);
-      setError(null);
-      const result = await generateRecipes(ingredients, f, preferences);
-      if (result.length === 0) {
-        setError('Could not generate recipes right now.');
-        setRecipes([]);
-      } else {
-        setRecipes(result);
-        useUserStore.getState().incrementRecipeCount();
-        if (!viewLoggedRef.current) {
-          trackRecipesScreenViewed(result.length);
-          viewLoggedRef.current = true;
+      if (generatingRef.current) return;
+      generatingRef.current = true;
+      try {
+        const proUser = await isPro().catch(() => false);
+        if (!proUser && useUserStore.getState().recipeCount >= getRecipeLimit()) {
+          await presentPaywall('recipe_limit_reached');
+          return;
         }
+        const f = overrideFilters ?? filters;
+        setLoading(true);
+        setError(null);
+        const result = await generateRecipes(ingredients, f, preferences);
+        if (result.length === 0) {
+          setError('Could not generate recipes right now.');
+          setRecipes([]);
+        } else {
+          setRecipes(result);
+          useUserStore.getState().incrementRecipeCount();
+          if (!viewLoggedRef.current) {
+            trackRecipesScreenViewed(result.length);
+            viewLoggedRef.current = true;
+          }
+        }
+      } finally {
+        setLoading(false);
+        generatingRef.current = false;
       }
-      setLoading(false);
     },
     [ingredients, filters, preferences, setLoading, setError, setRecipes]
   );
