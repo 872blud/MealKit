@@ -20,7 +20,8 @@ import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { SPRING_ENTER, STAGGER_DELTA_Y, STAGGER_SCALE_FROM, getStaggerDelay } from '@/theme/animations';
 import { useIngredientStore } from '@/stores/ingredientStore';
-import { useUserStore, FREE_SCAN_LIMIT } from '@/stores/userStore';
+import { useUserStore } from '@/stores/userStore';
+import { getScanLimit, isBetaMode } from '@/config/limits';
 import PressableScale from '@/components/PressableScale';
 import GlowBackground from '@/components/GlowBackground';
 import {
@@ -30,6 +31,7 @@ import {
 } from '@/services/analytics';
 import { presentPaywall } from '@/services/superwall';
 import { isPro } from '@/services/purchases';
+import { sendFeedback } from '@/services/feedback';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -137,10 +139,12 @@ export default function ScanHomeScreen() {
   const { scanCount, checkAndResetMonthly } = useUserStore();
   const [isProUser, setIsProUser] = useState(false);
   const [proStatusLoaded, setProStatusLoaded] = useState(false);
+  const scanLimit = getScanLimit();
+  const betaMode = isBetaMode();
 
   useEffect(() => {
     checkAndResetMonthly();
-    const remaining = Math.max(0, FREE_SCAN_LIMIT - scanCount);
+    const remaining = Math.max(0, scanLimit - scanCount);
     trackScanHomeViewed(ingredients.length, remaining);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -157,13 +161,13 @@ export default function ScanHomeScreen() {
 
   const sessionCount = ingredients.length;
   const hasSession = sessionCount > 0;
-  const atLimit = proStatusLoaded && !isProUser && scanCount >= FREE_SCAN_LIMIT;
-  const remaining = Math.max(0, FREE_SCAN_LIMIT - scanCount);
-  const meterProgress = Math.min(1, scanCount / FREE_SCAN_LIMIT);
+  const atLimit = proStatusLoaded && !isProUser && scanCount >= scanLimit;
+  const remaining = Math.max(0, scanLimit - scanCount);
+  const meterProgress = Math.min(1, scanCount / scanLimit);
 
   const openMode = async (mode: ScanMode) => {
     const proUser = await isPro().catch(() => false);
-    if (!proUser && useUserStore.getState().scanCount >= FREE_SCAN_LIMIT) {
+    if (!proUser && useUserStore.getState().scanCount >= scanLimit) {
       trackPaywallHit('scan_limit');
       await presentPaywall('scan_limit_reached');
       return;
@@ -185,7 +189,13 @@ export default function ScanHomeScreen() {
       {/* ── Top bar ──────────────────────────────────────────── */}
       <View style={styles.topBar}>
         <Text style={styles.brand}>MEALKIT</Text>
-        <UsagePill scanCount={scanCount} atLimit={atLimit} onPress={openUpgrade} />
+        <UsagePill
+          scanCount={scanCount}
+          scanLimit={scanLimit}
+          betaMode={betaMode}
+          atLimit={atLimit}
+          onPress={openUpgrade}
+        />
       </View>
 
       {/* ── Body — no ScrollView ──────────────────────────────── */}
@@ -239,6 +249,14 @@ export default function ScanHomeScreen() {
               </React.Fragment>
             ))}
           </View>
+          <PressableScale
+            onPress={sendFeedback}
+            style={styles.feedbackLink}
+            accessibilityRole="link"
+            accessibilityLabel="Send feedback"
+          >
+            <Text style={styles.feedbackText}>Send Feedback</Text>
+          </PressableScale>
         </View>
 
         {/* 3. Usage footer — pinned to bottom */}
@@ -247,33 +265,45 @@ export default function ScanHomeScreen() {
             <View style={styles.limitCard}>
               <View style={styles.limitHeader}>
                 <Ionicons name="lock-closed" size={14} color={colors.textSecondary} />
-                <Text style={styles.limitTitle}>Monthly scan limit reached</Text>
+                <Text style={styles.limitTitle}>
+                  {betaMode ? 'Beta usage limit reached' : 'Monthly scan limit reached'}
+                </Text>
               </View>
               <PressableScale onPress={openUpgrade} style={styles.limitCta}>
-                <Text style={styles.limitCtaLabel}>Upgrade to Pro</Text>
+                <Text style={styles.limitCtaLabel}>{betaMode ? 'See options' : 'Upgrade to Pro'}</Text>
                 <Ionicons name="arrow-forward" size={14} color={colors.onAccent} />
               </PressableScale>
             </View>
           ) : (
             <View style={styles.meter}>
               <View style={styles.meterHeader}>
-                <Text style={styles.meterLabel}>Free scans this month</Text>
-                <Text style={styles.meterCount}>
-                  {scanCount}
-                  <Text style={styles.meterTotal}> / {FREE_SCAN_LIMIT}</Text>
+                <Text style={styles.meterLabel}>
+                  {betaMode ? `Beta limit: ${scanCount}/${scanLimit} scans` : 'Free scans this month'}
                 </Text>
+                {!betaMode && (
+                  <Text style={styles.meterCount}>
+                    {scanCount}
+                    <Text style={styles.meterTotal}> / {scanLimit}</Text>
+                  </Text>
+                )}
               </View>
               <View style={styles.meterTrack}>
                 <View style={[styles.meterFill, { width: `${meterProgress * 100}%` }]} />
               </View>
               <Text style={styles.meterFooter}>
-                {remaining === 0
-                  ? 'No free scans left this month.'
-                  : `${remaining} ${remaining === 1 ? 'scan' : 'scans'} remaining.`}
-                {'  '}
-                <Text style={styles.meterUpgrade} onPress={openUpgrade}>
-                  Go unlimited →
-                </Text>
+                {betaMode
+                  ? `${remaining} ${remaining === 1 ? 'scan' : 'scans'} remaining in beta.`
+                  : remaining === 0
+                    ? 'No free scans left this month.'
+                    : `${remaining} ${remaining === 1 ? 'scan' : 'scans'} remaining.`}
+                {!betaMode && (
+                  <>
+                    {'  '}
+                    <Text style={styles.meterUpgrade} onPress={openUpgrade}>
+                      Go unlimited →
+                    </Text>
+                  </>
+                )}
               </Text>
             </View>
           )}
@@ -314,21 +344,43 @@ function ModeRow({ def, disabled, onPress }: { def: ModeDef; disabled: boolean; 
 
 // ─── Usage pill ──────────────────────────────────────────────────────────────
 
-function UsagePill({ scanCount, atLimit, onPress }: { scanCount: number; atLimit: boolean; onPress: () => void }) {
+function UsagePill({
+  scanCount,
+  scanLimit,
+  betaMode,
+  atLimit,
+  onPress,
+}: {
+  scanCount: number;
+  scanLimit: number;
+  betaMode: boolean;
+  atLimit: boolean;
+  onPress: () => void;
+}) {
   return (
     <PressableScale
       onPress={onPress}
       style={[styles.usagePill, atLimit && styles.usagePillLimit]}
-      accessibilityLabel={atLimit ? 'Scan limit reached. Tap to upgrade.' : `${scanCount}/${FREE_SCAN_LIMIT} scans used.`}
+      accessibilityLabel={
+        atLimit
+          ? betaMode
+            ? 'Beta usage limit reached.'
+            : 'Scan limit reached. Tap to upgrade.'
+          : betaMode
+            ? `Beta limit: ${scanCount}/${scanLimit} scans.`
+            : `${scanCount}/${scanLimit} scans used.`
+      }
     >
       {atLimit ? (
         <>
           <Ionicons name="lock-closed" size={12} color={colors.error} />
-          <Text style={[styles.usagePillText, styles.usagePillTextLimit]}>Upgrade</Text>
+          <Text style={[styles.usagePillText, styles.usagePillTextLimit]}>
+            {betaMode ? 'Limit' : 'Upgrade'}
+          </Text>
         </>
       ) : (
         <Text style={styles.usagePillText}>
-          {scanCount}<Text style={styles.usagePillMuted}>/{FREE_SCAN_LIMIT}</Text>
+          {scanCount}<Text style={styles.usagePillMuted}>/{scanLimit}</Text>
         </Text>
       )}
     </PressableScale>
@@ -501,6 +553,17 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: colors.textSecondary,
     lineHeight: 18,
+  },
+  feedbackLink: {
+    alignSelf: 'center',
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.xs,
+  },
+  feedbackText: {
+    ...typography.smallMedium,
+    color: colors.accent,
   },
 
   // Usage meter

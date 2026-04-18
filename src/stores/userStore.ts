@@ -3,9 +3,6 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getLocalMonthKey } from '@/utils/date';
 
-export const FREE_SCAN_LIMIT = 3;
-export const FREE_RECIPE_LIMIT = 5;
-
 export interface UserPreferences {
   dietaryRestrictions: string[];
   skill: 'beginner' | 'intermediate' | 'advanced';

@@ -15,7 +15,8 @@ import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { useIngredientStore, Ingredient } from '@/stores/ingredientStore';
-import { useUserStore, FREE_RECIPE_LIMIT } from '@/stores/userStore';
+import { useUserStore } from '@/stores/userStore';
+import { getRecipeLimit } from '@/config/limits';
 import IngredientRow from '@/components/IngredientRow';
 import EmptyState from '@/components/EmptyState';
 import PressableScale from '@/components/PressableScale';
@@ -76,13 +77,12 @@ export default function IngredientsScreen() {
     const userState = useUserStore.getState();
     userState.checkAndResetMonthly();
     const proUser = await isPro().catch(() => false);
-    if (!proUser && useUserStore.getState().recipeCount >= FREE_RECIPE_LIMIT) {
+    if (!proUser && useUserStore.getState().recipeCount >= getRecipeLimit()) {
       trackPaywallHit('recipe_limit');
       await presentPaywall('recipe_limit_reached');
       return;
     }
     trackGetRecipesTapped(ingredients.length);
-    userState.incrementRecipeCount();
     router.push('/recipes');
   };
 

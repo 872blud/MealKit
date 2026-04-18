@@ -29,6 +29,7 @@ import MacroBar from '@/components/MacroBar';
 import WeeklyBars from '@/components/WeeklyBars';
 import GoalSettingModal from '@/components/GoalSettingModal';
 import { getLocalDateKey, parseLocalDateKey, shiftLocalDateKey } from '@/utils/date';
+import { sendFeedback } from '@/services/feedback';
 
 type Tab = 'day' | 'week';
 
@@ -133,13 +134,22 @@ export default function NutritionScreen() {
       {/* ── Header ─────────────────────────────────────────────── */}
       <View style={styles.header}>
         <Text style={styles.title}>Nutrition</Text>
-        <PressableScale
-          onPress={() => setGoalsVisible(true)}
-          style={styles.gearBtn}
-          accessibilityLabel="Daily goals"
-        >
-          <Ionicons name="options-outline" size={22} color={colors.text} />
-        </PressableScale>
+        <View style={styles.headerActions}>
+          <PressableScale
+            onPress={sendFeedback}
+            style={styles.feedbackBtn}
+            accessibilityLabel="Send feedback"
+          >
+            <Text style={styles.feedbackText}>Send Feedback</Text>
+          </PressableScale>
+          <PressableScale
+            onPress={() => setGoalsVisible(true)}
+            style={styles.gearBtn}
+            accessibilityLabel="Daily goals"
+          >
+            <Ionicons name="options-outline" size={22} color={colors.text} />
+          </PressableScale>
+        </View>
       </View>
 
       {/* ── Tabs ───────────────────────────────────────────────── */}
@@ -624,6 +634,20 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title,
     color: colors.text,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  feedbackBtn: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  feedbackText: {
+    ...typography.smallMedium,
+    color: colors.accent,
   },
   gearBtn: {
     minWidth: 44,

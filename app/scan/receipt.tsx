@@ -20,7 +20,8 @@ import GlowBackground from '@/components/GlowBackground';
 import { extractReceiptIngredients, ExtractedIngredient } from '@/services/openai';
 import { presentPaywall } from '@/services/superwall';
 import { useIngredientStore } from '@/stores/ingredientStore';
-import { FREE_SCAN_LIMIT, useUserStore } from '@/stores/userStore';
+import { useUserStore } from '@/stores/userStore';
+import { getScanLimit, isBetaMode } from '@/config/limits';
 import { trackPaywallHit, trackScanCompleted, trackScanFailed } from '@/services/analytics';
 import { isPro } from '@/services/purchases';
 
@@ -83,6 +84,8 @@ export default function ReceiptScanScreen() {
   const insets = useSafeAreaInsets();
   const addIngredient = useIngredientStore((s) => s.addIngredient);
   const scanCount = useUserStore((s) => s.scanCount);
+  const scanLimit = getScanLimit();
+  const betaMode = isBetaMode();
 
   useEffect(() => {
     useUserStore.getState().checkAndResetMonthly();
@@ -120,15 +123,19 @@ export default function ReceiptScanScreen() {
     return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 
-  if (proStatusLoaded && !isProUser && scanCount >= FREE_SCAN_LIMIT) {
+  if (proStatusLoaded && !isProUser && scanCount >= scanLimit) {
     return (
       <View style={[styles.permissionContainer, { paddingTop: insets.top }]}>
         <GlowBackground primary="green" secondary="amber" />
         <EmptyState
           icon="lock-closed-outline"
-          title="Free scan limit reached"
-          body="You've used all 3 scans this month. Upgrade to Pro to keep scanning."
-          action={{ label: 'See Pro options', onPress: handleOpenPaywall }}
+          title={betaMode ? 'Beta usage limit reached' : 'Free scan limit reached'}
+          body={
+            betaMode
+              ? `You've used all ${scanLimit} beta scans this month.`
+              : `You've used all ${scanLimit} scans this month. Upgrade to Pro to keep scanning.`
+          }
+          action={{ label: betaMode ? 'See options' : 'See Pro options', onPress: handleOpenPaywall }}
         />
       </View>
     );
@@ -154,7 +161,7 @@ export default function ReceiptScanScreen() {
   const onCapture = async () => {
     useUserStore.getState().checkAndResetMonthly();
     const proUser = await isPro().catch(() => false);
-    if (!proUser && useUserStore.getState().scanCount >= FREE_SCAN_LIMIT) {
+    if (!proUser && useUserStore.getState().scanCount >= scanLimit) {
       await handleOpenPaywall();
       return;
     }
@@ -185,7 +192,7 @@ export default function ReceiptScanScreen() {
   const onAddToList = async () => {
     useUserStore.getState().checkAndResetMonthly();
     const proUser = await isPro().catch(() => false);
-    if (!proUser && useUserStore.getState().scanCount >= FREE_SCAN_LIMIT) {
+    if (!proUser && useUserStore.getState().scanCount >= scanLimit) {
       await handleOpenPaywall();
       return;
     }

@@ -20,7 +20,8 @@ import { useMediaLibraryPermissions } from 'expo-image-picker';
 import { identifyCounterIngredients, ExtractedIngredient } from '@/services/openai';
 import { presentPaywall } from '@/services/superwall';
 import { useIngredientStore } from '@/stores/ingredientStore';
-import { FREE_SCAN_LIMIT, useUserStore } from '@/stores/userStore';
+import { useUserStore } from '@/stores/userStore';
+import { getScanLimit, isBetaMode } from '@/config/limits';
 import { trackPaywallHit, trackScanCompleted, trackScanFailed } from '@/services/analytics';
 import { isPro } from '@/services/purchases';
 
@@ -94,6 +95,8 @@ export default function PhotoScanScreen() {
   const insets = useSafeAreaInsets();
   const addIngredient = useIngredientStore((s) => s.addIngredient);
   const scanCount = useUserStore((s) => s.scanCount);
+  const scanLimit = getScanLimit();
+  const betaMode = isBetaMode();
   const isCameraDenied = permission?.status === 'denied';
   const isLibraryGranted = !!libraryPermission?.granted;
   const isLibraryUndetermined = !libraryPermission || libraryPermission.status === 'undetermined';
@@ -141,7 +144,7 @@ export default function PhotoScanScreen() {
   const onCapture = useCallback(async () => {
     useUserStore.getState().checkAndResetMonthly();
     const proUser = await isPro().catch(() => false);
-    if (!proUser && useUserStore.getState().scanCount >= FREE_SCAN_LIMIT) {
+    if (!proUser && useUserStore.getState().scanCount >= scanLimit) {
       await handleOpenPaywall();
       return;
     }
@@ -162,7 +165,7 @@ export default function PhotoScanScreen() {
       );
       setScreenState('review');
     }
-  }, [handleOpenPaywall]);
+  }, [handleOpenPaywall, scanLimit]);
 
   const onRemove = useCallback((id: string) => {
     setItems((prev) => prev.filter((item) => item.id !== id));
@@ -186,7 +189,7 @@ export default function PhotoScanScreen() {
 
     useUserStore.getState().checkAndResetMonthly();
     const proUser = await isPro().catch(() => false);
-    if (!proUser && useUserStore.getState().scanCount >= FREE_SCAN_LIMIT) {
+    if (!proUser && useUserStore.getState().scanCount >= scanLimit) {
       await handleOpenPaywall();
       return;
     }
@@ -205,12 +208,12 @@ export default function PhotoScanScreen() {
       setItems(extracted.map((e, i) => ({ ...e, id: `photo-${i}-${Date.now()}`, source: 'photo' as const })));
       setScreenState('review');
     }
-  }, [handleOpenPaywall, libraryPermission, requestLibraryPermission]);
+  }, [handleOpenPaywall, libraryPermission, requestLibraryPermission, scanLimit]);
 
   const onAddToList = useCallback(async () => {
     useUserStore.getState().checkAndResetMonthly();
     const proUser = await isPro().catch(() => false);
-    if (!proUser && useUserStore.getState().scanCount >= FREE_SCAN_LIMIT) {
+    if (!proUser && useUserStore.getState().scanCount >= scanLimit) {
       await handleOpenPaywall();
       return;
     }
@@ -220,7 +223,7 @@ export default function PhotoScanScreen() {
     useUserStore.getState().incrementScanCount();
     trackScanCompleted('photo', items.length);
     router.push('/ingredients');
-  }, [items, addIngredient, handleOpenPaywall]);
+  }, [items, addIngredient, handleOpenPaywall, scanLimit]);
 
   // ── Permission guards ─────────────────────────────────────────────────────
   if (!permission) {
@@ -243,15 +246,19 @@ export default function PhotoScanScreen() {
     );
   }
 
-  if (proStatusLoaded && !isProUser && scanCount >= FREE_SCAN_LIMIT) {
+  if (proStatusLoaded && !isProUser && scanCount >= scanLimit) {
     return (
       <View style={[styles.permissionContainer, { paddingTop: insets.top }]}>
         <GlowBackground primary="green" secondary="amber" />
         <EmptyState
           icon="lock-closed-outline"
-          title="Free scan limit reached"
-          body="You've used all 3 scans this month. Upgrade to Pro to keep scanning."
-          action={{ label: 'See Pro options', onPress: handleOpenPaywall }}
+          title={betaMode ? 'Beta usage limit reached' : 'Free scan limit reached'}
+          body={
+            betaMode
+              ? `You've used all ${scanLimit} beta scans this month.`
+              : `You've used all ${scanLimit} scans this month. Upgrade to Pro to keep scanning.`
+          }
+          action={{ label: betaMode ? 'See options' : 'See Pro options', onPress: handleOpenPaywall }}
         />
       </View>
     );

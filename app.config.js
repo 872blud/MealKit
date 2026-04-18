@@ -1,5 +1,6 @@
 module.exports = ({ config }) => ({
   ...config,
+  plugins: [...(config.plugins ?? []), '@sentry/react-native'],
   extra: {
     anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
     openaiApiKey: process.env.OPENAI_API_KEY ?? '',
@@ -7,5 +8,7 @@ module.exports = ({ config }) => ({
     superwallApiKey: process.env.SUPERWALL_API_KEY ?? '',
     usdaApiKey: process.env.USDA_API_KEY ?? '',
     posthogApiKey: process.env.POSTHOG_API_KEY ?? '',
+    sentryDsn: process.env.SENTRY_DSN ?? '',
+    BETA_MODE: process.env.BETA_MODE === 'true',
   },
 });

@@ -86,6 +86,7 @@ export default function RecipesScreen() {
         setRecipes([]);
       } else {
         setRecipes(result);
+        useUserStore.getState().incrementRecipeCount();
         if (!viewLoggedRef.current) {
           trackRecipesScreenViewed(result.length);
           viewLoggedRef.current = true;

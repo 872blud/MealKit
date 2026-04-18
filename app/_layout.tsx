@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import * as Sentry from '@sentry/react-native';
+import Constants from 'expo-constants';
 import { Stack } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -23,9 +25,15 @@ import { posthog } from '@/services/analytics';
 import { configurePurchases } from '@/services/purchases';
 import { configureSuperwallWithRevenueCat } from '@/services/superwall';
 
+const sentryDsn = Constants.expoConfig?.extra?.sentryDsn;
+
+if (typeof sentryDsn === 'string' && sentryDsn.length > 0) {
+  Sentry.init({ dsn: sentryDsn, enableNative: true, debug: false });
+}
+
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
+function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     PlayfairDisplay_900Black,
     PlayfairDisplay_700Bold,
@@ -61,3 +69,5 @@ export default function RootLayout() {
     </PostHogProvider>
   );
 }
+
+export default Sentry.wrap(RootLayout);
