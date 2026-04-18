@@ -1,5 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Share as NativeShare } from 'react-native';
+import RecipeShareCard from '@/components/RecipeShareCard';
+import { isPro } from '@/services/purchases';
+import { generateFoodImage } from '@/services/openai';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +24,7 @@ import PressableScale from '@/components/PressableScale';
 import EmptyState from '@/components/EmptyState';
 import MacroChip from '@/components/MacroChip';
 import CookingMode from '@/components/CookingMode';
+import { getLocalDateKey } from '@/utils/date';
 
 const MIN_SERVINGS = 1;
 const MAX_SERVINGS = 16;
@@ -77,19 +81,60 @@ export default function RecipeDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const recipes = useRecipeStore((s) => s.recipes);
+  const recipeImages = useRecipeStore((s) => s.recipeImages);
+  const setRecipeImage = useRecipeStore((s) => s.setRecipeImage);
   const recipe = recipes.find((r) => r.id === id);
   const logMeal = useNutritionStore((s) => s.logMeal);
   const getDailyTotals = useNutritionStore((s) => s.getDailyTotals);
   const preferences = useUserStore((s) => s.preferences);
 
+  const shareCardRef = useRef<View>(null);
+  const [foodImageUrl, setFoodImageUrl] = useState<string | null>(null);
+  const [isProUser, setIsProUser] = useState(false);
   const [userServings, setUserServings] = useState<number>(recipe?.servings ?? 2);
   const [cooking, setCooking] = useState(false);
+  const [hasCooked, setHasCooked] = useState(false);
 
   useEffect(() => {
     if (recipe) {
       setUserServings(recipe.servings);
       trackRecipeDetailViewed(recipe.id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipe?.id]);
+
+  useEffect(() => {
+    let active = true;
+    isPro().then((pro) => { if (active) setIsProUser(pro); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  const IMAGE_TTL_MS = 55 * 60 * 1000; // 55 min — DALL-E URLs expire at ~1 h
+
+  useEffect(() => {
+    if (!recipe) return;
+    let active = true;
+
+    const cached = recipeImages[recipe.id];
+    const isStale = !cached || (Date.now() - cached.fetchedAt > IMAGE_TTL_MS);
+
+    if (!isStale) {
+      setFoodImageUrl(cached.url);
+      return;
+    }
+
+    generateFoodImage(recipe.name, recipe.aiReasoning ?? '')
+      .then((url) => {
+        if (!active) return;
+        setRecipeImage(recipe.id, url);
+        setFoodImageUrl(url);
+      })
+      .catch(() => {
+        if (!active) return;
+        setRecipeImage(recipe.id, null);
+      });
+
+    return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recipe?.id]);
 
@@ -108,6 +153,35 @@ export default function RecipeDetailScreen() {
     [recipe]
   );
 
+  const handleShare = useCallback(async () => {
+    if (!recipe) return;
+    const fallbackMessage = `I just cooked ${recipe.name} with Mealkit!`;
+
+    try {
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      const { captureRef } = await import('react-native-view-shot');
+      const shareModule = await import('react-native-share');
+      const shareSheet = shareModule.default;
+      const uri = await captureRef(shareCardRef, {
+        format: 'png',
+        quality: 1,
+        result: 'tmpfile',
+      });
+      await shareSheet.open({
+        url: uri,
+        type: 'image/png',
+        message: fallbackMessage,
+        title: recipe.name,
+        failOnCancel: false,
+      });
+    } catch {
+      await NativeShare.share({
+        title: recipe.name,
+        message: fallbackMessage,
+      }).catch(() => {});
+    }
+  }, [recipe, shareCardRef]);
+
   const handleStartCooking = useCallback(() => {
     if (!recipe) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft).catch(() => {});
@@ -123,29 +197,26 @@ export default function RecipeDetailScreen() {
     [recipe]
   );
 
-  const handleMarkAsCooked = useCallback(() => {
+  const handleMarkAsCooked = useCallback(async () => {
     if (!recipe) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const multiplier = userServings / recipe.servings;
-    // logMeal stores per-serving macros + user servings; nutritionStore multiplies
-    // on read via getDailyTotals. We scale the per-serving macros by the user's
-    // adjustment factor so the daily totals reflect the serving size they cooked.
+    const today = getLocalDateKey();
     logMeal({
       recipeId: recipe.id,
       recipeName: recipe.name,
       servings: userServings,
       date: today,
       macros: {
-        calories: recipe.nutrition.calories * multiplier,
-        protein: recipe.nutrition.protein * multiplier,
-        carbs: recipe.nutrition.carbs * multiplier,
-        fat: recipe.nutrition.fat * multiplier,
-        fiber: recipe.nutrition.fiber * multiplier,
-        sugar: recipe.nutrition.sugar * multiplier,
+        calories: recipe.nutrition.calories,
+        protein: recipe.nutrition.protein,
+        carbs: recipe.nutrition.carbs,
+        fat: recipe.nutrition.fat,
+        fiber: recipe.nutrition.fiber,
+        sugar: recipe.nutrition.sugar,
       },
     });
     trackMealCooked(recipe.id, userServings);
     setCooking(false);
+    setHasCooked(true);
   }, [recipe, userServings, logMeal]);
 
   if (!recipe) {
@@ -171,6 +242,7 @@ export default function RecipeDetailScreen() {
   const matchPercent = Math.round(recipe.ingredientMatch.percent);
   const canDec = userServings > MIN_SERVINGS;
   const canInc = userServings < MAX_SERVINGS;
+  const today = getLocalDateKey();
 
   return (
     <View style={styles.container}>
@@ -229,27 +301,27 @@ export default function RecipeDetailScreen() {
           <View style={styles.macroGrid}>
             <MacroChip
               macro="cal"
-              value={recipe.nutrition.calories * multiplier}
+              value={recipe.nutrition.calories}
               size="md"
             />
             <MacroChip
               macro="protein"
-              value={recipe.nutrition.protein * multiplier}
+              value={recipe.nutrition.protein}
               size="md"
             />
             <MacroChip
               macro="carb"
-              value={recipe.nutrition.carbs * multiplier}
+              value={recipe.nutrition.carbs}
               size="md"
             />
             <MacroChip
               macro="fat"
-              value={recipe.nutrition.fat * multiplier}
+              value={recipe.nutrition.fat}
               size="md"
             />
             <MacroChip
               macro="fiber"
-              value={recipe.nutrition.fiber * multiplier}
+              value={recipe.nutrition.fiber}
               size="md"
             />
           </View>
@@ -257,11 +329,11 @@ export default function RecipeDetailScreen() {
 
         {/* ── How this fits your day ──────────────────────── */}
         <FitCard
-          addCalories={recipe.nutrition.calories * multiplier}
-          addProtein={recipe.nutrition.protein * multiplier}
-          addCarbs={recipe.nutrition.carbs * multiplier}
-          addFat={recipe.nutrition.fat * multiplier}
-          current={getDailyTotals(new Date().toISOString().slice(0, 10))}
+          addCalories={recipe.nutrition.calories * userServings}
+          addProtein={recipe.nutrition.protein * userServings}
+          addCarbs={recipe.nutrition.carbs * userServings}
+          addFat={recipe.nutrition.fat * userServings}
+          current={getDailyTotals(today)}
           calorieTarget={preferences.dailyCalorieTarget}
           macroTargets={preferences.dailyMacroTargets}
         />
@@ -335,9 +407,15 @@ export default function RecipeDetailScreen() {
           { paddingBottom: insets.bottom > 0 ? insets.bottom : spacing.lg },
         ]}
       >
+        {hasCooked && (
+          <PressableScale onPress={handleShare} style={styles.shareBtn}>
+            <Ionicons name="share-outline" size={18} color={colors.accent} />
+            <Text style={styles.shareBtnLabel}>Share this meal</Text>
+          </PressableScale>
+        )}
         <PressableScale onPress={handleStartCooking} style={styles.cta}>
           <Ionicons name="flame-outline" size={20} color={colors.onAccent} />
-          <Text style={styles.ctaLabel}>Start Cooking</Text>
+          <Text style={styles.ctaLabel}>{hasCooked ? 'Cook Again' : 'Start Cooking'}</Text>
         </PressableScale>
       </View>
 
@@ -349,6 +427,20 @@ export default function RecipeDetailScreen() {
         onMarkAsCooked={handleMarkAsCooked}
         onStepAdvanced={handleStepAdvanced}
       />
+
+      {/* ── Offscreen share card — captured by view-shot ──── */}
+      <View
+        ref={shareCardRef}
+        collapsable={false}
+        pointerEvents="none"
+        style={{ position: 'absolute', top: -10000, left: 0, opacity: 1 }}
+      >
+        <RecipeShareCard
+          recipe={recipe}
+          imageUrl={foodImageUrl}
+          showWatermark={!isProUser}
+        />
+      </View>
     </View>
   );
 }
@@ -896,6 +988,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+  },
+  shareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: 14,
+    paddingVertical: spacing.md,
+    minHeight: 44,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.accent,
+    marginBottom: spacing.sm,
+  },
+  shareBtnLabel: {
+    ...typography.bodyMedium,
+    color: colors.accent,
   },
   cta: {
     flexDirection: 'row',

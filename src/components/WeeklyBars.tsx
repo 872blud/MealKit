@@ -10,6 +10,7 @@ import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { TIMING_ENTER, getStaggerDelay } from '@/theme/animations';
+import { getLocalDateKey } from '@/utils/date';
 
 interface WeekDay {
   date: string;
@@ -92,7 +93,7 @@ function DayBar({
     opacity: opacity.value,
   }));
 
-  const isToday = date === new Date().toISOString().slice(0, 10);
+  const isToday = date === getLocalDateKey();
   const over = target > 0 && calories > target;
   const fg = over ? colors.error : isToday ? colors.accent : colors.accent;
   const bg = isToday ? colors.accentDim : colors.surface;

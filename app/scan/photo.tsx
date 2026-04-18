@@ -1,7 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { View, Text, ScrollView, TextInput, StyleSheet } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useAnimatedStyle, useSharedValue, withTiming, withDelay,
@@ -13,9 +13,16 @@ import { typography } from '@/theme/typography';
 import { TIMING_ENTER, TIMING_EXIT, getStaggerDelay } from '@/theme/animations';
 import PressableScale from '@/components/PressableScale';
 import SkeletonLoader from '@/components/SkeletonLoader';
+import EmptyState from '@/components/EmptyState';
+import GlowBackground from '@/components/GlowBackground';
+import * as ImagePicker from 'expo-image-picker';
+import { useMediaLibraryPermissions } from 'expo-image-picker';
 import { identifyCounterIngredients, ExtractedIngredient } from '@/services/openai';
+import { presentPaywall } from '@/services/superwall';
 import { useIngredientStore } from '@/stores/ingredientStore';
-import { trackScanCompleted, trackScanFailed } from '@/services/analytics';
+import { FREE_SCAN_LIMIT, useUserStore } from '@/stores/userStore';
+import { trackPaywallHit, trackScanCompleted, trackScanFailed } from '@/services/analytics';
+import { isPro } from '@/services/purchases';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -76,15 +83,68 @@ function RemovableRow({ item, onRemove, index }: RemovableRowProps) {
 
 export default function PhotoScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
+  const [libraryPermission, requestLibraryPermission] = useMediaLibraryPermissions();
   const [screenState, setScreenState] = useState<ScreenState>('camera');
   const [items, setItems] = useState<IngredientItem[]>([]);
   const [quickAdd, setQuickAdd] = useState('');
+  const [inputMode, setInputMode] = useState<'camera' | 'library'>('camera');
+  const [isProUser, setIsProUser] = useState(false);
+  const [proStatusLoaded, setProStatusLoaded] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const insets = useSafeAreaInsets();
   const addIngredient = useIngredientStore((s) => s.addIngredient);
+  const scanCount = useUserStore((s) => s.scanCount);
+  const isCameraDenied = permission?.status === 'denied';
+  const isLibraryGranted = !!libraryPermission?.granted;
+  const isLibraryUndetermined = !libraryPermission || libraryPermission.status === 'undetermined';
+  const shouldForceLibraryMode = isCameraDenied && (isLibraryGranted || isLibraryUndetermined);
+  const effectiveInputMode = shouldForceLibraryMode ? 'library' : inputMode;
+
+  useEffect(() => {
+    useUserStore.getState().checkAndResetMonthly();
+  }, []);
+
+  useEffect(() => {
+    if (shouldForceLibraryMode && inputMode !== 'library') {
+      setInputMode('library');
+    }
+  }, [shouldForceLibraryMode, inputMode]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      void isPro()
+        .then((pro) => {
+          if (!active) return;
+          setIsProUser(pro);
+          setProStatusLoaded(true);
+        })
+        .catch(() => {
+          if (!active) return;
+          setIsProUser(false);
+          setProStatusLoaded(true);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
+
+  const handleOpenPaywall = useCallback(async () => {
+    trackPaywallHit('scan_limit');
+    await presentPaywall('scan_limit_reached');
+  }, []);
 
   // ── Callbacks — declared before all early returns (Rules of Hooks) ────────
   const onCapture = useCallback(async () => {
+    useUserStore.getState().checkAndResetMonthly();
+    const proUser = await isPro().catch(() => false);
+    if (!proUser && useUserStore.getState().scanCount >= FREE_SCAN_LIMIT) {
+      await handleOpenPaywall();
+      return;
+    }
     const photo = await cameraRef.current?.takePictureAsync({ base64: true, quality: 0.8 });
     if (!photo?.base64) return;
     setScreenState('processing');
@@ -102,7 +162,7 @@ export default function PhotoScanScreen() {
       );
       setScreenState('review');
     }
-  }, []);
+  }, [handleOpenPaywall]);
 
   const onRemove = useCallback((id: string) => {
     setItems((prev) => prev.filter((item) => item.id !== id));
@@ -118,22 +178,59 @@ export default function PhotoScanScreen() {
     setQuickAdd('');
   }, [quickAdd]);
 
-  const onAddToList = useCallback(() => {
+  const handlePickFromLibrary = useCallback(async () => {
+    if (!libraryPermission || libraryPermission.status === 'undetermined') {
+      const nextLibraryPermission = await requestLibraryPermission();
+      if (!nextLibraryPermission.granted) return;
+    }
+
+    useUserStore.getState().checkAndResetMonthly();
+    const proUser = await isPro().catch(() => false);
+    if (!proUser && useUserStore.getState().scanCount >= FREE_SCAN_LIMIT) {
+      await handleOpenPaywall();
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'] as any,
+      quality: 0.85,
+      base64: true,
+    });
+    if (result.canceled || !result.assets[0]?.base64) return;
+    setScreenState('processing');
+    const extracted = await identifyCounterIngredients(result.assets[0].base64);
+    if (extracted.length === 0) {
+      trackScanFailed('photo');
+      setScreenState('error');
+    } else {
+      setItems(extracted.map((e, i) => ({ ...e, id: `photo-${i}-${Date.now()}`, source: 'photo' as const })));
+      setScreenState('review');
+    }
+  }, [handleOpenPaywall, libraryPermission, requestLibraryPermission]);
+
+  const onAddToList = useCallback(async () => {
+    useUserStore.getState().checkAndResetMonthly();
+    const proUser = await isPro().catch(() => false);
+    if (!proUser && useUserStore.getState().scanCount >= FREE_SCAN_LIMIT) {
+      await handleOpenPaywall();
+      return;
+    }
     items.forEach((item) =>
       addIngredient({ name: item.name, category: item.category, source: item.source })
     );
+    useUserStore.getState().incrementScanCount();
     trackScanCompleted('photo', items.length);
     router.push('/ingredients');
-  }, [items, addIngredient]);
+  }, [items, addIngredient, handleOpenPaywall]);
 
   // ── Permission guards ─────────────────────────────────────────────────────
   if (!permission) {
     return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 
-  if (!permission.granted) {
+  if (!permission.granted && !shouldForceLibraryMode) {
     return (
       <View style={[styles.permissionContainer, { paddingTop: insets.top }]}>
+        <GlowBackground primary="green" secondary="amber" />
         <Ionicons name="camera-outline" size={48} color={colors.textDisabled} />
         <Text style={styles.permissionTitle}>Camera Access Needed</Text>
         <Text style={styles.permissionBody}>
@@ -146,10 +243,25 @@ export default function PhotoScanScreen() {
     );
   }
 
+  if (proStatusLoaded && !isProUser && scanCount >= FREE_SCAN_LIMIT) {
+    return (
+      <View style={[styles.permissionContainer, { paddingTop: insets.top }]}>
+        <GlowBackground primary="green" secondary="amber" />
+        <EmptyState
+          icon="lock-closed-outline"
+          title="Free scan limit reached"
+          body="You've used all 3 scans this month. Upgrade to Pro to keep scanning."
+          action={{ label: 'See Pro options', onPress: handleOpenPaywall }}
+        />
+      </View>
+    );
+  }
+
   // ── Processing ─────────────────────────────────────────────────────────────
   if (screenState === 'processing') {
     return (
       <View style={[styles.processingContainer, { paddingTop: insets.top }]}>
+        <GlowBackground primary="blue" secondary="amber" />
         <Text style={styles.processingLabel}>Identifying ingredients...</Text>
         <View style={{ width: '100%', gap: spacing.md }}>
           <SkeletonLoader height={20} width="75%" borderRadius={6} />
@@ -166,6 +278,7 @@ export default function PhotoScanScreen() {
   if (screenState === 'error') {
     return (
       <View style={[styles.errorContainer, { paddingTop: insets.top }]}>
+        <GlowBackground primary="amber" secondary={null} />
         <Ionicons name="image-outline" size={48} color={colors.textDisabled} />
         <Text style={styles.errorTitle}>Couldn't identify ingredients</Text>
         <Text style={styles.errorBody}>
@@ -185,6 +298,7 @@ export default function PhotoScanScreen() {
   if (screenState === 'review') {
     return (
       <View style={[styles.reviewContainer, { paddingTop: insets.top }]}>
+        <GlowBackground primary="green" secondary={null} />
         {/* Header */}
         <View style={[styles.header, { paddingTop: spacing.sm }]}>
           <PressableScale onPress={() => setScreenState('camera')}>
@@ -255,11 +369,13 @@ export default function PhotoScanScreen() {
   // ── Camera (default) ───────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
-      <CameraView
-        ref={cameraRef}
-        style={styles.camera}
-        mode="picture"
-      />
+      {!shouldForceLibraryMode && (
+        <CameraView
+          ref={cameraRef}
+          style={styles.camera}
+          mode="picture"
+        />
+      )}
 
       {/* Header overlay */}
       <View style={[styles.cameraHeader, { paddingTop: insets.top + spacing.sm }]}>
@@ -270,13 +386,42 @@ export default function PhotoScanScreen() {
 
       {/* Hint text */}
       <View style={styles.hintWrapper}>
-        <Text style={styles.hint}>Spread items on a flat surface then capture</Text>
+        <Text style={styles.hint}>
+          {effectiveInputMode === 'camera'
+            ? 'Spread items on a flat surface then capture'
+            : 'Pick a photo from your library'}
+        </Text>
       </View>
 
-      {/* Capture button */}
+      {/* Camera / Library toggle */}
+      <View style={[styles.modeToggleWrap, { bottom: insets.bottom + spacing.xl + 72 + spacing.lg }]}>
+        <View style={styles.modeToggle}>
+          {(shouldForceLibraryMode ? (['library'] as const) : (['camera', 'library'] as const)).map((m) => (
+            <PressableScale
+              key={m}
+              onPress={() => setInputMode(m)}
+              style={[styles.modeToggleBtn, effectiveInputMode === m && styles.modeToggleBtnActive]}
+            >
+              <Text style={[styles.modeToggleLabel, effectiveInputMode === m && styles.modeToggleLabelActive]}>
+                {m === 'camera' ? 'Camera' : 'Library'}
+              </Text>
+            </PressableScale>
+          ))}
+        </View>
+      </View>
+
+      {/* Capture button — swaps action based on inputMode */}
       <View style={[styles.captureWrapper, { paddingBottom: insets.bottom + spacing.xl }]}>
-        <PressableScale onPress={onCapture} style={styles.captureBtn} scaleTo={0.95}>
-          <Ionicons name="camera" size={32} color={colors.onAccent} />
+        <PressableScale
+          onPress={effectiveInputMode === 'camera' ? onCapture : handlePickFromLibrary}
+          style={styles.captureBtn}
+          scaleTo={0.95}
+        >
+          <Ionicons
+            name={effectiveInputMode === 'camera' ? 'camera' : 'image'}
+            size={32}
+            color={colors.onAccent}
+          />
         </PressableScale>
       </View>
     </View>
@@ -317,6 +462,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
 
+  // Camera / Library toggle
+  modeToggleWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
+  modeToggle: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 100,
+    padding: 3,
+    gap: 2,
+  },
+  modeToggleBtn: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: 100,
+  },
+  modeToggleBtnActive: { backgroundColor: colors.surface },
+  modeToggleLabel: { ...typography.smallMedium, color: colors.textSecondary },
+  modeToggleLabelActive: { color: colors.text },
+
   // Capture button
   captureWrapper: {
     position: 'absolute',
@@ -354,9 +517,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   processingLabel: {
-    ...typography.bodyMedium,
+    ...typography.heading,
     color: colors.textSecondary,
     marginBottom: spacing.xl,
+    textAlign: 'center',
   },
 
   // Review state

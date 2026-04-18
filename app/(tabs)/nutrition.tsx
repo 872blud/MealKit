@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
+import GlowBackground from '@/components/GlowBackground';
 import { TIMING_ENTER, getStaggerDelay } from '@/theme/animations';
 import { useNutritionStore, NutritionLogEntry } from '@/stores/nutritionStore';
 import { useUserStore } from '@/stores/userStore';
@@ -27,17 +28,16 @@ import CalorieArc from '@/components/CalorieArc';
 import MacroBar from '@/components/MacroBar';
 import WeeklyBars from '@/components/WeeklyBars';
 import GoalSettingModal from '@/components/GoalSettingModal';
+import { getLocalDateKey, parseLocalDateKey, shiftLocalDateKey } from '@/utils/date';
 
 type Tab = 'day' | 'week';
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return getLocalDateKey();
 }
 
 function shiftDate(iso: string, days: number): string {
-  const d = new Date(iso + 'T00:00:00');
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return shiftLocalDateKey(iso, days);
 }
 
 function formatDateLabel(iso: string): string {
@@ -45,7 +45,7 @@ function formatDateLabel(iso: string): string {
   const yesterday = shiftDate(today, -1);
   if (iso === today) return 'Today';
   if (iso === yesterday) return 'Yesterday';
-  const d = new Date(iso + 'T00:00:00');
+  const d = parseLocalDateKey(iso);
   return d.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
@@ -129,6 +129,7 @@ export default function NutritionScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      <GlowBackground primary="blue" secondary="green" />
       {/* ── Header ─────────────────────────────────────────────── */}
       <View style={styles.header}>
         <Text style={styles.title}>Nutrition</Text>

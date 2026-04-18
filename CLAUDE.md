@@ -1,215 +1,136 @@
-# Mealkit — Claude Instructions
+# Mealkit — Claude Handoff
 
 ## Project Overview
-Mealkit is a React Native (Expo) iOS app that scans groceries via receipt photo, barcode, or counter photo, generates AI recipes, and tracks nutrition automatically. Monetized via RevenueCat subscriptions.
+Mealkit is a React Native + Expo iOS app that scans groceries, generates AI recipes, and tracks nutrition.
 
-**Project path:** `~/Desktop/Mealkit/`
-**Plan file:** `~/Desktop/Mealkit/PLAN.md`
-**PRD file:** `~/Desktop/Mealkit/PRD.md`
+- Project path: `~/Desktop/Mealkit/`
+- Plan file: `~/Desktop/Mealkit/PLAN.md`
+- PRD file: `~/Desktop/Mealkit/Mealkit_MVP_PRD.md`
+- Stack: Expo managed workflow, TypeScript strict, expo-router, Zustand, react-native-reanimated
+- Platform: iPhone only, iOS 17+
 
----
-
-## Bismillah / Alhamdulillah Rule
-- Say **bismillah** before every crucial step (builds, commits, writing a major file, wiring navigation)
-- Say **alhamdulillah** when something goes well (build succeeds, tests pass, task complete)
+This file is a reality-checked handoff. It describes the code that actually exists on disk.
 
 ---
 
-## MANDATORY CHECKPOINT RULE
-**Stop and check in with the user after every 3 completed tasks. No exceptions.**
-- After completing 3 tasks → STOP, report what was built, ask "ready to continue?"
-- Repeat for every batch of 3
-- On final tasks → STOP, final report
+## Current State (as of 2026-04-17)
+
+### Fully Implemented
+- Theme system: `src/theme/colors.ts`, `spacing.ts`, `typography.ts`, `animations.ts`
+- Root app shell: `app/_layout.tsx`, `app/(tabs)/_layout.tsx`
+- App entry routing: `app/index.tsx` — waits for Zustand-persist hydration, then routes to `/onboarding` or `/(tabs)/scan`
+- Onboarding: `app/onboarding.tsx` — 4-panel paged scroll (3 editorial value-prop panels + 1 preference panel with diet chips, skill segmented, cuisine chips). Skip on panels 1–3. "Start cooking" commits preferences to `userStore` and marks `onboardingComplete: true`.
+- Scan home: `app/(tabs)/scan.tsx` — three scan mode rows, usage meter, session resume card
+- Three scan flows: `app/scan/barcode.tsx`, `app/scan/receipt.tsx`, `app/scan/photo.tsx`
+- Ingredient list: `app/ingredients.tsx` + `src/stores/ingredientStore.ts` (session-based, not persisted)
+- Recipe generation: `src/services/claude.ts` (Claude Sonnet direct calls)
+- Recipe browsing: `app/recipes/index.tsx`, `src/components/RecipeSwipeDeck.tsx`, `src/components/RecipeFilterSheet.tsx`, `src/components/RecipeCard.tsx`
+- Recipe detail + cooking: `app/recipes/[id].tsx`, `src/components/CookingMode.tsx`
+- Nutrition dashboard: `app/(tabs)/nutrition.tsx`, `src/components/CalorieArc.tsx`, `src/components/MacroBar.tsx`, `src/components/WeeklyBars.tsx`, `src/components/GoalSettingModal.tsx`
+- Paywall fallback: `app/paywall.tsx` — hero + 4 value props, monthly/annual plan cards, CTA, Restore · Terms · Privacy footer. Wired to RevenueCat helper methods for subscribe/restore, but real purchases still require a development build
+- Analytics: `src/services/analytics.ts` — PostHog wired for full scan → recipe → cook → paywall funnel events
+- Babel config: `babel.config.js` exists and includes `react-native-reanimated/plugin` — required for the current animation-heavy UI to boot correctly
+- Expo runtime compatibility: pin `react-native-reanimated` to `4.1.1`, `react-native-worklets` to `0.5.1`, and `@react-native-async-storage/async-storage` to `2.2.0` to match Expo 54's bundled native modules. Do not loosen these version ranges casually.
+- Router/analytics runtime dependencies: keep `expo-linking` and `react-native-svg` installed. Expo Router needs the former; PostHog's survey bundle pulls in the latter even when surveys are not actively used.
+
+### Still Placeholder or Not Wired
+- `src/services/superwall.ts` — exists; native Superwall register falls back to `/paywall` when unavailable
+- `src/services/healthkit.ts` — helper exists, but nothing in the cook flow calls it yet
+- `src/services/nutrition.ts` — placeholder
+- `src/utils/api.ts` — placeholder
+- `src/utils/formatters.ts` — placeholder
+- RevenueCat in Expo Go — intentionally skipped in `purchases.ts`; use a development build or Test Store key for real purchase testing
+- Native sharing in Expo Go — `app/recipes/[id].tsx` falls back to React Native's built-in `Share` API because `react-native-share` is not available in Expo Go
+- HealthKit and RevenueCat native flows still need a development build for real device/simulator validation
+
+### Partial
+- `app/ingredients.tsx` — manual add is there, but animated slide-up entry and empty state shortcuts are not done
+- `app/recipes/[id].tsx` — share prompt after "Mark as Cooked" is not implemented
+- `app/(tabs)/_layout.tsx` — tabs work, but deep-linking and Pro entitlement gating are pending
 
 ---
 
-## MANDATORY SKILLS
-Read and apply these skills before writing ANY view or component code. These are not optional.
+## Bugs Fixed (all by Codex on 2026-04-17)
 
-| Skill | What it owns | When to reference |
-|-------|-------------|-------------------|
-| **ui-ux-pro-max** | Touch targets (≥44pt), spacing rhythm (4/8pt grid), navigation patterns, accessibility, haptics, safe areas | Before writing any screen or component |
-| **impeccable** | Color (OKLCH, no pure black/white, tinted neutrals), typography bans, motion bans (no gradient text, no side-stripe borders, no glassmorphism everywhere), spatial rules | Before choosing any color, font, or layout pattern |
-| **emil-design-eng** | Animation precision (custom easings via reanimated, spring configs, scale(0.95) not scale(0), exit faster than enter, stagger 30-80ms, button scale(0.97) on press) | Before writing any animation or transition |
-| **context7** | Up-to-date documentation lookups for React Native, Expo, and all npm packages. Use before implementing any package integration. | Before using any library or API you haven't used in this session |
-| **brains / superpower** | Agentic execution — subagent-driven development. One subagent per task. Spec review + quality review after each. | For task execution workflow |
-
-**Workflow:** Before writing any view → run ui-ux-pro-max design system query → read impeccable rules → read Emil animation rules → then write code. No shortcuts.
+1. **Nutrition serving math** — macros were multiplied twice. Fixed in `app/recipes/[id].tsx`.
+2. **Local date keys** — UTC slicing shifted meals and monthly resets. Fixed with `src/utils/date.ts`; all day/week/month logic now uses local calendar dates.
+3. **Free scan enforcement** — `FREE_SCAN_LIMIT` existed but was never checked or incremented. Fixed in all three scan flows.
+4. **Session ingredient behavior** — `ingredientStore` persisted to AsyncStorage; "New Scan" didn't clear state. Converted to in-memory session state.
 
 ---
 
-## AI Services — Split by Complexity
+## Monetization Stack (decided 2026-04-17)
 
-| Task | Service | Model | Why |
-|------|---------|-------|-----|
-| Recipe generation | Claude API | claude-sonnet-4-6 | Complex — quality is the core product |
-| Receipt OCR + classification | OpenAI API | gpt-4o-mini | Vision + simple extraction — cheap |
-| Photo ingredient ID | OpenAI API | gpt-4o-mini | Simple vision — cheap |
+| Layer | Responsibility |
+|-------|---------------|
+| **RevenueCat** | Canonical entitlement backend — subscription state, receipts, restore, cross-device sync |
+| **Superwall** | Paywall UI layer — remotely editable without shipping an app update; delegates purchases to RevenueCat |
+| **PostHog** | Analytics funnel — already wired; paywall impression/convert/dismiss events flow here |
 
-**Never use Claude for receipt/photo tasks. Never use OpenAI for recipe generation.**
-
----
-
-## API Keys
-All keys live in a `.env` file at project root (gitignored). Accessed via `expo-constants` or `react-native-dotenv`.
-
-Required keys:
-- `ANTHROPIC_API_KEY`
-- `OPENAI_API_KEY`
-- `REVENUECAT_API_KEY`
-- `USDA_API_KEY`
+**Wiring plan:**
+1. `_layout.tsx` initializes RevenueCat (user ID) and Superwall (API key + RC purchase controller) on app open
+2. Gate hits call `Superwall.register(event: 'scan_limit' | 'recipe_limit')` instead of `router.push('/paywall')`
+3. Superwall renders remotely-configured paywall; on purchase hands transaction to RevenueCat
+4. `purchases.ts` exposes `isPro()` reading RevenueCat active entitlement; all gate checks consult this for Pro users
+5. `app/paywall.tsx` remains as hard fallback for offline / Superwall-failure cases only
 
 ---
 
-## Paywall Architecture
-**RevenueCat** (`react-native-purchases`) handles subscription management, paywall UI, and entitlement validation.
+## What Still Needs To Be Built
 
-Free tier: 3 scans + 5 recipe generations per month.
-Pro: unlimited everything, micronutrients, Apple Health sync, clean recipe cards.
+### Priority 1 — Monetization (blocks Pro features everywhere)
+- Finish development-build validation for RevenueCat and Superwall
+- Confirm entitlement behavior in a custom dev build (Expo Go now intentionally skips RevenueCat native setup)
+- Replace any remaining direct `/paywall` fallback calls with `presentPaywall(event)` where needed
 
-Track scan count and recipe count in Zustand store + AsyncStorage. Check entitlements via RevenueCat before gated features.
+### Priority 2 — Share Flow
+- `src/components/RecipeShareCard.tsx` — composited card (recipe name, AI food photo, stats, wordmark, free-tier watermark)
+- DALL-E 3 integration in `openai.ts` — `generateFoodImage()`, cached in recipeStore
+- Development build: validate `react-native-view-shot` + `react-native-share` native share-card path end to end
+- Expo Go: fallback is plain text share via React Native `Share`
+- Share prompt after "Mark as Cooked" in `app/recipes/[id].tsx`
 
----
+### Priority 3 — Apple Health
+- `src/services/healthkit.ts` — `requestHealthPermissions()`, `logNutrition(macros, date)` via `react-native-health`
+- Pro-gated on "Mark as Cooked"
+- `NSHealthShareUsageDescription` / `NSHealthUpdateUsageDescription` in `app.json`
 
-## Design System — Non-Negotiable Rules
-
-### Colors
-- All colors use `theme.*` tokens — never raw hex in components, never `#000000` or `#FFFFFF`
-- Dark mode only — set at app level
-- Green-tinted neutrals (OKLCH-derived): background `#0C120E`, surface `#141A15`
-- Accent green: `theme.accent` (`#3DB85A`) — use sparingly (10% rule)
-- 60% surface / 30% secondary text+borders / 10% accent
-- **Banned:** cyan-on-dark, purple-to-blue gradients, neon glows, gradient-filled text, side-stripe accent borders
-
-### Typography
-- System font with rounded design where possible. On iOS React Native, use `System` font with appropriate weights.
-- Monospaced for all numbers (calories, macros, timers) — use `fontVariant: ['tabular-nums']` on all numeric Text
-- Type scale: 12 / 14 / 16 / 20 / 24 / 32. Min 16pt for body text.
-- **Banned:** Inter, Syne, IBM Plex, Space Grotesk, DM Sans
-
-### Animations (Emil Kowalski system — via react-native-reanimated)
-- Enter: expo-out 350ms — `withTiming(value, { duration: 350, easing: Easing.bezier(0.16, 1, 0.3, 1) })`
-- Exit: ease-in 220ms — `withTiming(value, { duration: 220, easing: Easing.bezier(0.7, 0, 0.84, 0) })`
-- Toggle: ease-in-out 250ms — `withTiming(value, { duration: 250, easing: Easing.bezier(0.65, 0, 0.35, 1) })`
-- Button press: scale(0.97) with 160ms expo-out
-- Sheets/modals: spring `withSpring(value, { damping: 20, stiffness: 200 })`
-- List stagger: 40ms per item, capped at 300ms total
-- **Never** animate from `scale(0)` — always start at `scale(0.95)` + `opacity(0)`
-- **Never** use bouncy springs with damping < 15. No visible overshoot.
-- **Only animate `transform` and `opacity`** — never animate width/height/padding
-
-### Layout
-- 4pt base spacing scale: `xs=4, sm=8, md=12, lg=16, xl=24, xxl=32, xxxl=48`
-- All tap targets ≥ 44x44pt
-- Safe areas: use `useSafeAreaInsets()` from `react-native-safe-area-context` for all edge content
-- No cards nested inside cards
-- Not every row needs a card — use dividers + spacing for list hierarchy
-- Skeleton screens (not spinners) for any operation >300ms
-
-### The AI Slop Test
-Before marking any view done, ask: "Would someone immediately say an AI made this?" Signs to eliminate: every section in a card, all cards same size, purple-blue gradient accents, side-stripe borders, modal for every sub-action, rounded rect with generic drop shadow everywhere.
+### Priority 4 — Polish
+- Ingredients UX: animated slide-up add, empty-state scan shortcuts
+- Before App Store: move Anthropic, OpenAI, USDA calls behind a backend proxy (currently client-side — OK for TestFlight)
 
 ---
 
-## File Structure
-```
-Mealkit/
-├── app/                          # expo-router file-based routing
-│   ├── _layout.tsx               # Root layout (dark mode, providers)
-│   ├── index.tsx                 # Entry → onboarding or main
-│   ├── (tabs)/
-│   │   ├── _layout.tsx           # Tab navigator
-│   │   ├── scan.tsx              # Scan home (mode picker)
-│   │   └── nutrition.tsx         # Nutrition dashboard
-│   ├── scan/
-│   │   ├── receipt.tsx           # Receipt scan screen
-│   │   ├── barcode.tsx           # Barcode scan screen
-│   │   └── photo.tsx             # Counter photo screen
-│   ├── ingredients.tsx           # Ingredient list + "Get Recipes" CTA
-│   ├── recipes/
-│   │   ├── index.tsx             # Recipe cards (swipeable)
-│   │   └── [id].tsx              # Recipe detail + cooking mode
-│   ├── onboarding.tsx            # 3-panel onboarding
-│   └── paywall.tsx               # RevenueCat paywall
-├── src/
-│   ├── services/
-│   │   ├── claude.ts             # Claude API — recipe generation ONLY
-│   │   ├── openai.ts             # OpenAI API — receipt OCR + photo ID ONLY
-│   │   ├── barcode.ts            # Open Food Facts + USDA barcode lookup
-│   │   ├── nutrition.ts          # USDA FoodData Central
-│   │   ├── healthkit.ts          # Apple HealthKit write
-│   │   └── purchases.ts         # RevenueCat setup + entitlement checks
-│   ├── stores/
-│   │   ├── ingredientStore.ts    # Zustand — session ingredient list
-│   │   ├── recipeStore.ts        # Zustand — generated recipes
-│   │   ├── nutritionStore.ts     # Zustand — daily nutrition log
-│   │   └── userStore.ts          # Zustand — preferences, onboarding state, scan counts
-│   ├── theme/
-│   │   ├── colors.ts             # OKLCH-derived color tokens
-│   │   ├── spacing.ts            # 4pt scale
-│   │   ├── typography.ts         # Font presets
-│   │   └── animations.ts         # Emil easing curves for reanimated
-│   ├── components/
-│   │   ├── MacroChip.tsx
-│   │   ├── IngredientRow.tsx
-│   │   ├── RecipeCard.tsx
-│   │   ├── SkeletonLoader.tsx
-│   │   ├── PressableScale.tsx    # Button wrapper with scale(0.97) press
-│   │   └── EmptyState.tsx
-│   └── utils/
-│       ├── api.ts                # Shared fetch helpers
-│       └── formatters.ts         # Number/date formatters
-├── assets/
-├── .env                          # API keys (gitignored)
-├── .gitignore
-├── app.json                      # Expo config
-├── package.json
-├── tsconfig.json
-├── CLAUDE.md                     # This file
-├── PLAN.md                       # Implementation plan
-└── PRD.md                        # Product requirements
-```
+## Design and Technical Rules
+- Use `colors.*` tokens only — no raw hex in components
+- Dark mode only
+- System font only
+- `fontVariant: ['tabular-nums']` on all numeric Text — no exceptions
+- `react-native-reanimated` for animations; never the legacy `Animated` API
+- `expo-router` for navigation
+- Zustand for app state
 
----
+## Execution Rules
+- Delegate mechanical coding tasks to Codex (`codex:codex-rescue`); keep design, color, typography, animation, and layout decisions with Claude
+- Use `superpowers:subagent-driven-development` for bounded implementation tasks
+- Lead session owns: navigation, cross-store logic, monetization flow, entry screens, handoff docs
+- A UI task is not done until it passes a visual quality pass against design rules — not just because it builds
+- After any cross-cutting change, update `PLAN.md` and this file in the same turn
 
-## Technical Rules
-- React Native + Expo (managed workflow), TypeScript strict mode
-- `expo-router` for all navigation (file-based routing)
-- Zustand for all global state — no Redux, no Context API for state
-- `react-native-reanimated` for ALL animations — no Animated API
-- All API calls are `async/await` with proper error handling and loading states
-- All services are singleton modules (export functions, not classes)
-- EAS Build for TestFlight distribution
-- Commit after each task with conventional commit format: `feat:`, `fix:`, etc.
-- Build and test on iOS Simulator after every task
+## Verification
+- `npx tsc --noEmit` passes clean as of 2026-04-18
+- No test scripts in `package.json`
+- No lint scripts in `package.json`
 
----
-
-## NPM Packages (install at project init)
-
-### Core
-- `expo` (latest SDK)
-- `expo-router`
-- `expo-camera`
-- `expo-haptics`
-- `expo-constants`
-- `expo-image-picker` (fallback for photo mode)
-- `expo-keep-awake`
-- `react-native-reanimated`
-- `react-native-gesture-handler`
-- `react-native-safe-area-context`
-- `react-native-screens`
-
-### Data & State
-- `zustand`
-- `@react-native-async-storage/async-storage`
-
-### Integrations
-- `react-native-purchases` (RevenueCat)
-- `react-native-health` (Apple HealthKit)
-- `react-native-view-shot` (recipe card screenshot for sharing)
-- `react-native-share`
-
-### Dev
-- `typescript`
-- `react-native-dotenv` or `expo-constants` for env vars
+## Notes For The Next Session
+- Trust the codebase and this file over older progress markers
+- Treat `PLAN.md` as the current execution map
+- Onboarding, scan home, and paywall fallback are all real — do not treat them as placeholders
+- RevenueCat helpers and Superwall fallback service exist, but Expo Go skips native purchases on purpose
+- PostHog is safe to leave unconfigured in preview builds now; `analytics.ts` uses a disabled placeholder key when `POSTHOG_API_KEY` is absent so the app still boots
+- If the app suddenly reports many "missing default export" route warnings, first suspect an earlier module crash; Expo Router emits those warnings secondarily when a route import fails
+- Reanimated requires `babel.config.js` with `react-native-reanimated/plugin`; if that file disappears, the app will crash early from animated component imports
+- If `react-native-worklets` drifts above Expo 54's bundled version, expect `Exception in HostFunction` crashes from animated imports even when the Babel config is correct
+- Expo Go cannot validate the real `react-native-share`, RevenueCat store flow, or HealthKit path; use a development build for those checks
+- The four Codex bug fixes on 2026-04-17 are stable — do not re-open them without a regression
+- Delegate implementation work to Codex; design stays with Claude

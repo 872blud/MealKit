@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getLocalMonthKey } from '@/utils/date';
 
 export const FREE_SCAN_LIMIT = 3;
 export const FREE_RECIPE_LIMIT = 5;
@@ -46,7 +47,7 @@ export const useUserStore = create<UserStore>()(
       preferences: defaultPreferences,
       scanCount: 0,
       recipeCount: 0,
-      lastResetMonth: new Date().toISOString().slice(0, 7),
+      lastResetMonth: getLocalMonthKey(),
       setOnboardingComplete: (onboardingComplete) => set({ onboardingComplete }),
       updatePreferences: (prefs) =>
         set((state) => ({ preferences: { ...state.preferences, ...prefs } })),
@@ -59,7 +60,7 @@ export const useUserStore = create<UserStore>()(
         set((state) => ({ recipeCount: state.recipeCount + 1 }));
       },
       checkAndResetMonthly: () => {
-        const currentMonth = new Date().toISOString().slice(0, 7);
+        const currentMonth = getLocalMonthKey();
         if (get().lastResetMonth !== currentMonth) {
           set({ scanCount: 0, recipeCount: 0, lastResetMonth: currentMonth });
         }

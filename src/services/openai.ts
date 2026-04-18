@@ -170,3 +170,49 @@ Rules:
     return [];
   }
 }
+
+interface OpenAIImageGenerationResponse {
+  data?: Array<{
+    url?: string;
+  }>;
+}
+
+export async function generateFoodImage(
+  recipeName: string,
+  description: string
+): Promise<string | null> {
+  const apiKey = getOpenAIKey();
+  if (!apiKey) return null;
+
+  const prompt = `Create an overhead flat-lay food photography image of ${recipeName}. ${description}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'dall-e-3',
+        prompt,
+        size: '1024x1024',
+        quality: 'standard',
+        n: 1,
+      }),
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as OpenAIImageGenerationResponse;
+    return data.data?.[0]?.url ?? null;
+  } catch {
+    clearTimeout(timeout);
+    return null;
+  }
+}

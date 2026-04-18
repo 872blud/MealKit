@@ -32,7 +32,7 @@ export const TIMING_TOGGLE = { duration: DURATION.toggle, easing: EASING_TOGGLE 
 export const TIMING_BUTTON = { duration: DURATION.button, easing: EASING_ENTER };
 export const TIMING_FAST = { duration: DURATION.fast, easing: EASING_FAST };
 
-// ─── Spring Config ───────────────────────────────────────────────────────────
+// ─── Spring Configs ──────────────────────────────────────────────────────────
 
 // For sheets, modals, drag interactions. No visible overshoot.
 export const SPRING_CONFIG = {
@@ -41,10 +41,21 @@ export const SPRING_CONFIG = {
   mass: 1,
 } as const;
 
+// For screen entrance — expressive spring with slight scale-up.
+export const SPRING_ENTER = {
+  damping: 20,
+  stiffness: 180,
+  mass: 0.8,
+} as const;
+
 // ─── List Stagger ─────────────────────────────────────────────────────────
 
-export const STAGGER_ITEM_MS = 40;   // Delay per item
-export const STAGGER_MAX_MS = 300;    // Cap — no list takes more than 300ms total
+export const STAGGER_ITEM_MS = 60;   // Delay per item (was 40ms)
+export const STAGGER_MAX_MS = 400;    // Cap
+
+// Entrance offset for spring stagger items
+export const STAGGER_DELTA_Y = 20;        // translateY from (was 8)
+export const STAGGER_SCALE_FROM = 0.96;   // scale up from this to 1.0
 
 export function getStaggerDelay(index: number): number {
   return Math.min(index * STAGGER_ITEM_MS, STAGGER_MAX_MS);

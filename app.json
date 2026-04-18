@@ -30,6 +30,7 @@
     "plugins": [
       ["expo-router", { "root": "app", "origin": "https://mealkit.app" }],
       "expo-camera",
+      "expo-image-picker",
       [
         "react-native-health",
         {

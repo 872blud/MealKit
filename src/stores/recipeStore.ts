@@ -36,6 +36,7 @@ export interface Recipe {
   chefTips: string[];
   ingredientMatch: IngredientMatch;
   aiReasoning: string;
+  cuisine: string;
 }
 
 export interface RecipeFilters {
@@ -60,6 +61,8 @@ interface RecipeStore {
   error: string | null;
   filters: RecipeFilters;
   currentIndex: number;
+  // DALL-E URLs expire after ~1 h. Store fetchedAt so callers can detect staleness.
+  recipeImages: Record<string, { url: string | null; fetchedAt: number }>;
   setRecipes: (recipes: Recipe[]) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -67,6 +70,7 @@ interface RecipeStore {
   resetFilters: () => void;
   setCurrentIndex: (index: number) => void;
   clearRecipes: () => void;
+  setRecipeImage: (recipeId: string, url: string | null) => void;
 }
 
 export const useRecipeStore = create<RecipeStore>()(
@@ -77,6 +81,7 @@ export const useRecipeStore = create<RecipeStore>()(
       error: null,
       filters: defaultFilters,
       currentIndex: 0,
+      recipeImages: {},
       setRecipes: (recipes) => set({ recipes, currentIndex: 0 }),
       setLoading: (loading) => set({ loading }),
       setError: (error) => set({ error }),
@@ -85,6 +90,13 @@ export const useRecipeStore = create<RecipeStore>()(
       resetFilters: () => set({ filters: defaultFilters }),
       setCurrentIndex: (currentIndex) => set({ currentIndex }),
       clearRecipes: () => set({ recipes: [], currentIndex: 0, error: null }),
+      setRecipeImage: (recipeId, url) =>
+        set((state) => ({
+          recipeImages: {
+            ...state.recipeImages,
+            [recipeId]: { url, fetchedAt: Date.now() },
+          },
+        })),
     }),
     {
       name: 'mealkit-recipes',

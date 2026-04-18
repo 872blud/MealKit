@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useAnimatedStyle, useSharedValue, withTiming,
@@ -17,13 +17,19 @@ import { typography } from '@/theme/typography';
 import { TIMING_ENTER } from '@/theme/animations';
 import PressableScale from '@/components/PressableScale';
 import SkeletonLoader from '@/components/SkeletonLoader';
+import EmptyState from '@/components/EmptyState';
+import GlowBackground from '@/components/GlowBackground';
 import { lookupBarcode } from '@/services/barcode';
+import { presentPaywall } from '@/services/superwall';
 import { useIngredientStore, Ingredient } from '@/stores/ingredientStore';
+import { FREE_SCAN_LIMIT, useUserStore } from '@/stores/userStore';
 import {
   trackBarcodeResolved,
   trackBarcodeFailed,
   trackScanCompleted,
+  trackPaywallHit,
 } from '@/services/analytics';
+import { isPro } from '@/services/purchases';
 
 type ScannedItem = Ingredient & { pending?: boolean };
 
@@ -72,10 +78,44 @@ export default function BarcodeScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scannedItems, setScannedItems] = useState<ScannedItem[]>([]);
   const [manualText, setManualText] = useState('');
+  const [isProUser, setIsProUser] = useState(false);
+  const [proStatusLoaded, setProStatusLoaded] = useState(false);
   const scannedBarcodes = useRef<Set<string>>(new Set());
   const processingBarcodes = useRef<Set<string>>(new Set());
   const insets = useSafeAreaInsets();
   const addIngredient = useIngredientStore((s) => s.addIngredient);
+  const scanCount = useUserStore((s) => s.scanCount);
+
+  React.useEffect(() => {
+    useUserStore.getState().checkAndResetMonthly();
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      void isPro()
+        .then((pro) => {
+          if (!active) return;
+          setIsProUser(pro);
+          setProStatusLoaded(true);
+        })
+        .catch(() => {
+          if (!active) return;
+          setIsProUser(false);
+          setProStatusLoaded(true);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
+
+  const handleOpenPaywall = useCallback(async () => {
+    trackPaywallHit('scan_limit');
+    await presentPaywall('scan_limit_reached');
+  }, []);
 
   const onBarcodeScanned = useCallback(async ({ data }: BarcodeScanningResult) => {
     if (scannedBarcodes.current.has(data)) return;
@@ -134,22 +174,45 @@ export default function BarcodeScanScreen() {
     setManualText('');
   }, [manualText]);
 
-  const onDone = useCallback(() => {
+  const onDone = useCallback(async () => {
+    useUserStore.getState().checkAndResetMonthly();
+    const proUser = await isPro().catch(() => false);
+    if (!proUser && useUserStore.getState().scanCount >= FREE_SCAN_LIMIT) {
+      await handleOpenPaywall();
+      return;
+    }
     const resolved = scannedItems.filter((item) => !item.pending && item.name);
+    if (resolved.length === 0) return;
     resolved.forEach(({ id: _id, pending: _p, ...rest }) => addIngredient(rest));
+    useUserStore.getState().incrementScanCount();
     trackScanCompleted('barcode', resolved.length);
     router.push('/ingredients');
-  }, [scannedItems, addIngredient]);
+  }, [scannedItems, addIngredient, handleOpenPaywall]);
 
   // Permission states
   if (!permission) return <View style={styles.permissionContainer} />;
   if (!permission.granted) {
     return (
       <View style={[styles.permissionContainer, { paddingTop: insets.top }]}>
+        <GlowBackground primary="green" secondary="amber" />
         <Text style={styles.permissionText}>Camera access is needed to scan barcodes.</Text>
         <PressableScale onPress={requestPermission} style={styles.permissionBtn}>
           <Text style={styles.permissionBtnText}>Grant Camera Access</Text>
         </PressableScale>
+      </View>
+    );
+  }
+
+  if (proStatusLoaded && !isProUser && scanCount >= FREE_SCAN_LIMIT) {
+    return (
+      <View style={[styles.permissionContainer, { paddingTop: insets.top }]}>
+        <GlowBackground primary="green" secondary="amber" />
+        <EmptyState
+          icon="lock-closed-outline"
+          title="Free scan limit reached"
+          body="You've used all 3 scans this month. Upgrade to Pro to keep scanning."
+          action={{ label: 'See Pro options', onPress: handleOpenPaywall }}
+        />
       </View>
     );
   }
@@ -175,6 +238,7 @@ export default function BarcodeScanScreen() {
         <PressableScale onPress={() => router.back()} style={styles.headerBtn}>
           <Ionicons name="chevron-back" size={28} color={colors.text} />
         </PressableScale>
+        <Text style={styles.headerTitle}>Barcode</Text>
         <PressableScale onPress={onDone} style={styles.headerBtn}>
           <Text style={styles.doneText}>
             Done{confirmedCount > 0 ? ` (${confirmedCount})` : ''}
@@ -188,6 +252,7 @@ export default function BarcodeScanScreen() {
         style={styles.bottomPanelWrapper}
       >
         <View style={[styles.bottomPanel, { paddingBottom: insets.bottom + spacing.md }]}>
+          <GlowBackground primary="green" secondary={null} />
           {/* List */}
           <ScrollView
             style={styles.list}
@@ -229,6 +294,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
+  },
+  headerTitle: {
+    ...typography.heading,
+    color: colors.text,
   },
   headerBtn: {
     padding: spacing.sm,

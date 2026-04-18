@@ -1,15 +1,27 @@
 import PostHog from 'posthog-react-native';
 import Constants from 'expo-constants';
 
-const apiKey =
+const configuredApiKey =
   (Constants.expoConfig?.extra as Record<string, string> | undefined)?.posthogApiKey ?? '';
+const apiKey = configuredApiKey || 'disabled-posthog';
 
 export const posthog = new PostHog(apiKey, {
   host: 'https://us.i.posthog.com',
-  disabled: !apiKey,
+  disabled: !configuredApiKey,
 });
 
 // ─── Scan funnel ─────────────────────────────────────────────────────────────
+
+export function trackScanHomeViewed(sessionItemCount: number, scansRemaining: number) {
+  posthog.capture('scan_home_viewed', {
+    session_item_count: sessionItemCount,
+    scans_remaining: scansRemaining,
+  });
+}
+
+export function trackScanModePicked(mode: 'receipt' | 'barcode' | 'photo') {
+  posthog.capture('scan_mode_picked', { mode });
+}
 
 export function trackBarcodeResolved(name: string, category: string) {
   posthog.capture('barcode_item_resolved', { name, category });
@@ -49,6 +61,30 @@ export function trackGetRecipesTapped(ingredientCount: number) {
 
 export function trackPaywallHit(trigger: 'recipe_limit' | 'scan_limit') {
   posthog.capture('paywall_hit', { trigger });
+}
+
+export function trackPaywallImpression(source: 'fallback' | 'superwall') {
+  posthog.capture('paywall_impression', { source });
+}
+
+export function trackPaywallDismissed(source: 'fallback' | 'superwall') {
+  posthog.capture('paywall_dismissed', { source });
+}
+
+export function trackPaywallPurchaseStarted(plan: 'annual' | 'monthly') {
+  posthog.capture('paywall_purchase_started', { plan });
+}
+
+export function trackPaywallPurchaseCompleted(plan: 'annual' | 'monthly') {
+  posthog.capture('paywall_purchase_completed', { plan });
+}
+
+export function trackPaywallPurchaseFailed(plan: 'annual' | 'monthly', reason: string) {
+  posthog.capture('paywall_purchase_failed', { plan, reason });
+}
+
+export function trackPaywallRestoreTapped() {
+  posthog.capture('paywall_restore_tapped');
 }
 
 export function trackRecipeGenerationStarted(ingredientCount: number) {

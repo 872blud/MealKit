@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getLocalDateKey } from '@/utils/date';
 
 export interface MacroTotals {
   calories: number;
@@ -67,10 +68,11 @@ export const useNutritionStore = create<NutritionStore>()(
           ),
       getWeeklySummary: () => {
         const days: { date: string; totals: MacroTotals }[] = [];
+        const today = new Date();
         for (let i = 6; i >= 0; i--) {
-          const d = new Date();
+          const d = new Date(today.getFullYear(), today.getMonth(), today.getDate());
           d.setDate(d.getDate() - i);
-          const date = d.toISOString().slice(0, 10);
+          const date = getLocalDateKey(d);
           days.push({ date, totals: get().getDailyTotals(date) });
         }
         return days;

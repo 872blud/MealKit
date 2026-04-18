@@ -26,6 +26,8 @@ import {
   trackGetRecipesTapped,
   trackPaywallHit,
 } from '@/services/analytics';
+import { presentPaywall } from '@/services/superwall';
+import { isPro } from '@/services/purchases';
 
 const SOURCE_ICONS: Record<Ingredient['source'], keyof typeof Ionicons.glyphMap> = {
   barcode: 'barcode-outline',
@@ -36,8 +38,7 @@ const SOURCE_ICONS: Record<Ingredient['source'], keyof typeof Ionicons.glyphMap>
 
 export default function IngredientsScreen() {
   const insets = useSafeAreaInsets();
-  const { ingredients, addIngredient, removeIngredient } = useIngredientStore();
-  const { recipeCount, incrementRecipeCount } = useUserStore();
+  const { ingredients, addIngredient, removeIngredient, clearIngredients } = useIngredientStore();
   const [manualText, setManualText] = useState('');
   const inputRef = useRef<TextInput>(null);
 
@@ -71,15 +72,23 @@ export default function IngredientsScreen() {
     trackIngredientRemoved();
   };
 
-  const handleGetRecipes = () => {
-    if (recipeCount >= FREE_RECIPE_LIMIT) {
+  const handleGetRecipes = async () => {
+    const userState = useUserStore.getState();
+    userState.checkAndResetMonthly();
+    const proUser = await isPro().catch(() => false);
+    if (!proUser && useUserStore.getState().recipeCount >= FREE_RECIPE_LIMIT) {
       trackPaywallHit('recipe_limit');
-      router.push('/paywall');
+      await presentPaywall('recipe_limit_reached');
       return;
     }
     trackGetRecipesTapped(ingredients.length);
-    incrementRecipeCount();
+    userState.incrementRecipeCount();
     router.push('/recipes');
+  };
+
+  const handleNewScan = () => {
+    clearIngredients();
+    router.navigate('/(tabs)/scan');
   };
 
   const canGetRecipes = ingredients.length > 0;
@@ -107,7 +116,7 @@ export default function IngredientsScreen() {
             </View>
           </View>
           <PressableScale
-            onPress={() => router.navigate('/(tabs)/scan')}
+            onPress={handleNewScan}
             style={styles.newScanBtn}
           >
             <Ionicons name="scan-outline" size={15} color={colors.accent} />
@@ -137,7 +146,7 @@ export default function IngredientsScreen() {
             icon="basket-outline"
             title="Nothing scanned yet"
             body="Scan a receipt, barcode, or snap a photo of your counter to add ingredients."
-            action={{ label: 'Start Scanning', onPress: () => router.back() }}
+            action={{ label: 'Start Scanning', onPress: handleNewScan }}
           />
         ) : (
           <ScrollView

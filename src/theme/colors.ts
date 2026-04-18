@@ -36,6 +36,15 @@ export const colors = {
 
   // Overlay
   scrim: 'rgba(0, 0, 0, 0.6)', // Modal/sheet scrim
+
+  // Glow layers — used as LinearGradient colors on screen backgrounds
+  glowGreen: 'rgba(74, 222, 128, 0.22)',
+  glowGreenMid: 'rgba(74, 222, 128, 0.08)',
+  glowAmber: 'rgba(220, 160, 60, 0.16)',
+  glowAmberMid: 'rgba(220, 160, 60, 0.06)',
+  glowBlue: 'rgba(120, 160, 255, 0.16)',
+  glowBlueMid: 'rgba(120, 160, 255, 0.06)',
+  transparent: 'transparent',
 } as const;
 
 export type ColorToken = keyof typeof colors;

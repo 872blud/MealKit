@@ -13,6 +13,7 @@ import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { TIMING_ENTER, getStaggerDelay } from '@/theme/animations';
+import GlowBackground from '@/components/GlowBackground';
 import {
   useRecipeStore,
   Recipe,
@@ -157,6 +158,7 @@ export default function RecipesScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      <GlowBackground primary="amber" secondary="green" />
       {/* ── Header ─────────────────────────────────────────────── */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>

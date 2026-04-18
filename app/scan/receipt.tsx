@@ -1,9 +1,9 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useAnimatedStyle, useSharedValue, withTiming, withDelay,
@@ -15,9 +15,14 @@ import { typography } from '@/theme/typography';
 import { TIMING_ENTER, getStaggerDelay } from '@/theme/animations';
 import PressableScale from '@/components/PressableScale';
 import SkeletonLoader from '@/components/SkeletonLoader';
+import EmptyState from '@/components/EmptyState';
+import GlowBackground from '@/components/GlowBackground';
 import { extractReceiptIngredients, ExtractedIngredient } from '@/services/openai';
+import { presentPaywall } from '@/services/superwall';
 import { useIngredientStore } from '@/stores/ingredientStore';
-import { trackScanCompleted, trackScanFailed } from '@/services/analytics';
+import { FREE_SCAN_LIMIT, useUserStore } from '@/stores/userStore';
+import { trackPaywallHit, trackScanCompleted, trackScanFailed } from '@/services/analytics';
+import { isPro } from '@/services/purchases';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -72,19 +77,68 @@ export default function ReceiptScanScreen() {
   const [screenState, setScreenState] = useState<ScreenState>('camera');
   const [items, setItems] = useState<ExtractedIngredient[]>([]);
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
+  const [isProUser, setIsProUser] = useState(false);
+  const [proStatusLoaded, setProStatusLoaded] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const insets = useSafeAreaInsets();
   const addIngredient = useIngredientStore((s) => s.addIngredient);
+  const scanCount = useUserStore((s) => s.scanCount);
+
+  useEffect(() => {
+    useUserStore.getState().checkAndResetMonthly();
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      void isPro()
+        .then((pro) => {
+          if (!active) return;
+          setIsProUser(pro);
+          setProStatusLoaded(true);
+        })
+        .catch(() => {
+          if (!active) return;
+          setIsProUser(false);
+          setProStatusLoaded(true);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
+
+  const handleOpenPaywall = async () => {
+    trackPaywallHit('scan_limit');
+    await presentPaywall('scan_limit_reached');
+  };
 
   // Permission loading
   if (!permission) {
     return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 
+  if (proStatusLoaded && !isProUser && scanCount >= FREE_SCAN_LIMIT) {
+    return (
+      <View style={[styles.permissionContainer, { paddingTop: insets.top }]}>
+        <GlowBackground primary="green" secondary="amber" />
+        <EmptyState
+          icon="lock-closed-outline"
+          title="Free scan limit reached"
+          body="You've used all 3 scans this month. Upgrade to Pro to keep scanning."
+          action={{ label: 'See Pro options', onPress: handleOpenPaywall }}
+        />
+      </View>
+    );
+  }
+
   // Permission denied
   if (!permission.granted) {
     return (
       <View style={[styles.permissionContainer, { paddingTop: insets.top }]}>
+        <GlowBackground primary="green" secondary="amber" />
         <Ionicons name="camera-outline" size={48} color={colors.textDisabled} />
         <Text style={styles.permissionTitle}>Camera Access Needed</Text>
         <Text style={styles.permissionBody}>
@@ -98,6 +152,12 @@ export default function ReceiptScanScreen() {
   }
 
   const onCapture = async () => {
+    useUserStore.getState().checkAndResetMonthly();
+    const proUser = await isPro().catch(() => false);
+    if (!proUser && useUserStore.getState().scanCount >= FREE_SCAN_LIMIT) {
+      await handleOpenPaywall();
+      return;
+    }
     const photo = await cameraRef.current?.takePictureAsync({ base64: true, quality: 0.8 });
     if (!photo?.base64) return;
     setScreenState('processing');
@@ -122,11 +182,18 @@ export default function ReceiptScanScreen() {
 
   const checkedCount = checkedIds.size;
 
-  const onAddToList = () => {
+  const onAddToList = async () => {
+    useUserStore.getState().checkAndResetMonthly();
+    const proUser = await isPro().catch(() => false);
+    if (!proUser && useUserStore.getState().scanCount >= FREE_SCAN_LIMIT) {
+      await handleOpenPaywall();
+      return;
+    }
     const selected = items.filter((_, i) => checkedIds.has(i));
     selected.forEach((item) =>
       addIngredient({ name: item.name, category: item.category, source: 'receipt' })
     );
+    useUserStore.getState().incrementScanCount();
     trackScanCompleted('receipt', selected.length);
     router.push('/ingredients');
   };
@@ -135,6 +202,7 @@ export default function ReceiptScanScreen() {
   if (screenState === 'processing') {
     return (
       <View style={[styles.processingContainer, { paddingTop: insets.top }]}>
+        <GlowBackground primary="blue" secondary="amber" />
         <Text style={styles.processingLabel}>Reading your receipt...</Text>
         <View style={{ width: '100%', gap: spacing.md }}>
           <SkeletonLoader height={20} width="80%" borderRadius={6} />
@@ -150,6 +218,7 @@ export default function ReceiptScanScreen() {
   if (screenState === 'error') {
     return (
       <View style={[styles.errorContainer, { paddingTop: insets.top }]}>
+        <GlowBackground primary="amber" secondary={null} />
         <Ionicons name="document-text-outline" size={48} color={colors.textDisabled} />
         <Text style={styles.errorTitle}>Couldn't read receipt</Text>
         <Text style={styles.errorBody}>
@@ -169,6 +238,7 @@ export default function ReceiptScanScreen() {
   if (screenState === 'review') {
     return (
       <View style={[styles.reviewContainer, { paddingTop: insets.top }]}>
+        <GlowBackground primary="green" secondary={null} />
         {/* Header */}
         <View style={[styles.reviewHeader, { paddingTop: spacing.sm }]}>
           <PressableScale onPress={() => setScreenState('camera')}>
@@ -283,9 +353,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   processingLabel: {
-    ...typography.bodyMedium,
+    ...typography.heading,
     color: colors.textSecondary,
     marginBottom: spacing.xl,
+    textAlign: 'center',
   },
 
   // Review state

@@ -4,18 +4,51 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { PostHogProvider } from 'posthog-react-native';
+import * as SplashScreen from 'expo-splash-screen';
+import { useFonts } from 'expo-font';
+import {
+  PlayfairDisplay_900Black,
+  PlayfairDisplay_700Bold,
+  PlayfairDisplay_400Regular_Italic,
+} from '@expo-google-fonts/playfair-display';
+import {
+  Archivo_400Regular,
+  Archivo_500Medium,
+  Archivo_600SemiBold,
+  Archivo_700Bold,
+} from '@expo-google-fonts/archivo';
 import { colors } from '@/theme/colors';
 import { useUserStore } from '@/stores/userStore';
 import { posthog } from '@/services/analytics';
+import { configurePurchases } from '@/services/purchases';
+import { configureSuperwallWithRevenueCat } from '@/services/superwall';
+
+SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    PlayfairDisplay_900Black,
+    PlayfairDisplay_700Bold,
+    PlayfairDisplay_400Regular_Italic,
+    Archivo_400Regular,
+    Archivo_500Medium,
+    Archivo_600SemiBold,
+    Archivo_700Bold,
+  });
+
   useEffect(() => {
-    // Run after zustand-persist has had a tick to rehydrate from AsyncStorage
-    const id = setTimeout(() => {
-      useUserStore.getState().checkAndResetMonthly();
-    }, 100);
-    return () => clearTimeout(id);
+    if (fontsLoaded || fontError) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded, fontError]);
+
+  useEffect(() => {
+    useUserStore.getState().checkAndResetMonthly();
+    configurePurchases();
+    configureSuperwallWithRevenueCat();
   }, []);
+
+  if (!fontsLoaded && !fontError) return null;
 
   return (
     <PostHogProvider client={posthog}>

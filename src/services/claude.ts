@@ -27,7 +27,8 @@ function isValidRecipe(obj: unknown): obj is Recipe {
     typeof r.nutrition === 'object' && r.nutrition !== null &&
     Array.isArray(r.chefTips) &&
     typeof r.ingredientMatch === 'object' && r.ingredientMatch !== null &&
-    typeof r.aiReasoning === 'string'
+    typeof r.aiReasoning === 'string' &&
+    typeof r.cuisine === 'string'
   );
 }
 
@@ -59,7 +60,19 @@ function buildPrompt(
     prefLines.push(`Preferred cuisines: ${preferences.cuisines.join(', ')}`);
   }
 
-  return `You are a culinary AI assistant. Generate 3–5 recipes using the ingredients below.
+  const activeRestrictions = [
+    ...preferences.dietaryRestrictions,
+    ...(filters.dietary ? [filters.dietary] : []),
+  ].map((r) => r.toLowerCase());
+  const isVegan = activeRestrictions.includes('vegan');
+  const isDairyFree = activeRestrictions.includes('dairy-free');
+  const basePantry = ['salt', 'black pepper', 'olive oil', 'vegetable oil', 'water', 'garlic'];
+  if (!isVegan && !isDairyFree) basePantry.push('butter');
+  const pantryList = basePantry.join(', ');
+
+  return `You are Sous, the culinary AI behind Mealkit. Your only job is to generate realistic, delicious recipes from the exact ingredients the user has available.
+
+Assume these pantry staples are always available: ${pantryList}. Do not assume anything else beyond the scanned list and this pantry staple list.
 
 Available ingredients:
 ${ingredientList}
@@ -76,10 +89,12 @@ Rules:
 3. List any ingredients the user would need to buy in ingredientMatch.missing.
 4. ingredientMatch.substitutions maps missing items to available-ingredient substitutes where possible.
 5. steps must be clear, numbered cooking instructions (strings, not objects).
-6. nutrition values are per serving.
-7. chefTips: 1–3 practical tips per recipe.
-8. aiReasoning: exactly one sentence explaining why this recipe fits the user.
-9. Generate a unique id for each recipe (short alphanumeric string).
+6. Each step must include a realistic time estimate in parentheses, e.g. "Sauté onions until translucent (4–5 min)". Use technique language: fold, sear, deglaze, simmer — not "cook until done".
+7. nutrition values are per serving.
+8. chefTips: 1–3 practical tips per recipe.
+9. aiReasoning: one sentence explaining the specific combination of scanned ingredients that makes this recipe work. Never start with "This recipe". Never mention "Claude" or "AI" or "Sous".
+10. CRITICAL: Never suggest a recipe that requires an ingredient not in the scanned list or pantry staples above. If you cannot create a viable recipe without hallucinating ingredients, reduce the number of recipes returned — returning fewer real recipes is better than padding with impossible ones.
+11. Generate a unique id for each recipe (short alphanumeric string).
 
 Return ONLY a valid JSON array — no markdown fences, no explanation, no trailing text.
 
@@ -104,7 +119,8 @@ Schema:
       "missing": ["string"],
       "substitutions": { "missing_item": "substitute" }
     },
-    "aiReasoning": "string"
+    "aiReasoning": "string",
+    "cuisine": "string (Italian|Asian|Mediterranean|Mexican|American|Indian|French|Middle Eastern|Other)"
   }
 ]`;
 }
