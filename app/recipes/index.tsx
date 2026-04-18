@@ -22,6 +22,9 @@ import {
 import { useIngredientStore } from '@/stores/ingredientStore';
 import { useUserStore } from '@/stores/userStore';
 import { generateRecipes } from '@/services/claude';
+import { getRecipeLimit } from '@/config/limits';
+import { isPro } from '@/services/purchases';
+import { presentPaywall } from '@/services/superwall';
 import {
   trackRecipesScreenViewed,
   trackRecipeSwiped,
@@ -77,6 +80,11 @@ export default function RecipesScreen() {
   const runGenerate = useCallback(
     async (overrideFilters?: RecipeFilters) => {
       if (ingredients.length === 0) return;
+      const proUser = await isPro().catch(() => false);
+      if (!proUser && useUserStore.getState().recipeCount >= getRecipeLimit()) {
+        await presentPaywall('recipe_limit_reached');
+        return;
+      }
       const f = overrideFilters ?? filters;
       setLoading(true);
       setError(null);
