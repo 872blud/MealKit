@@ -21,7 +21,7 @@ import {
 } from '@/stores/recipeStore';
 import { useIngredientStore } from '@/stores/ingredientStore';
 import { useUserStore } from '@/stores/userStore';
-import { generateRecipes } from '@/services/claude';
+import { generateRecipes } from '@/services/recipeGeneration';
 import { getRecipeLimit } from '@/config/limits';
 import { isPro } from '@/services/purchases';
 import { presentPaywall } from '@/services/superwall';

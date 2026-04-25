@@ -58,7 +58,7 @@ function formatCurrency(amount: number, currencyCode: string): string {
 
 const VALUE_PROPS = [
   'Unlimited scans',
-  'Unlimited AI recipes',
+  'Unlimited recipes',
   'Micronutrient breakdown',
   'Share recipe cards',
 ] as const;

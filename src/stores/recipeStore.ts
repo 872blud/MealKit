@@ -35,7 +35,7 @@ export interface Recipe {
   nutrition: RecipeNutrition;
   chefTips: string[];
   ingredientMatch: IngredientMatch;
-  aiReasoning: string;
+  selectionNote: string;
   cuisine: string;
 }
 
@@ -61,7 +61,7 @@ interface RecipeStore {
   error: string | null;
   filters: RecipeFilters;
   currentIndex: number;
-  // DALL-E URLs expire after ~1 h. Store fetchedAt so callers can detect staleness.
+  // Remote image URLs can expire. Store fetchedAt so callers can detect staleness.
   recipeImages: Record<string, { url: string | null; fetchedAt: number }>;
   setRecipes: (recipes: Recipe[]) => void;
   setLoading: (loading: boolean) => void;

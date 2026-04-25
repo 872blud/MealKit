@@ -34,7 +34,7 @@ export default function RecipeShareCard({
 
   return (
     <View style={styles.card} collapsable={false}>
-      {/* ── Hero: AI food photo, or editorial fallback ─────────────────── */}
+      {/* ── Hero image, or editorial fallback ──────────────────────────── */}
       {imageUrl ? (
         <Image
           source={{ uri: imageUrl }}
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.06)',
   },
 
-  // Fallback hero (no DALL-E image available)
+  // Fallback hero
   fallback: {
     backgroundColor: '#0F1810',
     alignItems: 'center',

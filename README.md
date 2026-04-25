@@ -27,7 +27,7 @@ mealkit is supposed to start from the other direction. it looks at what you boug
 - typescript
 - zustand
 - asyncstorage
-- claude / openai api hooks for ingredient and recipe generation
+- local recipe and ingredient workflows
 - camera, barcode scanning, haptics, healthkit, revenuecat, superwall, sentry, and posthog integrations
 
 ## running it locally
@@ -50,7 +50,7 @@ run on ios:
 npm run ios
 ```
 
-you will need local api keys for the ai features. keep those in your own `.env` file. the real `.env` is intentionally ignored so secrets do not end up in the repo.
+you will need local keys for the paid services. keep those in your own `.env` file. the real `.env` is intentionally ignored so secrets do not end up in the repo.
 
 ## status
 

@@ -17,7 +17,7 @@ import PressableScale from '@/components/PressableScale';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import EmptyState from '@/components/EmptyState';
 import GlowBackground from '@/components/GlowBackground';
-import { extractReceiptIngredients, ExtractedIngredient } from '@/services/openai';
+import { extractReceiptIngredients, ExtractedIngredient } from '@/services/ingredientExtraction';
 import { presentPaywall } from '@/services/superwall';
 import { useIngredientStore } from '@/stores/ingredientStore';
 import { useUserStore } from '@/stores/userStore';

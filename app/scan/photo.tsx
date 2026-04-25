@@ -17,7 +17,7 @@ import EmptyState from '@/components/EmptyState';
 import GlowBackground from '@/components/GlowBackground';
 import * as ImagePicker from 'expo-image-picker';
 import { useMediaLibraryPermissions } from 'expo-image-picker';
-import { identifyCounterIngredients, ExtractedIngredient } from '@/services/openai';
+import { identifyCounterIngredients, ExtractedIngredient } from '@/services/ingredientExtraction';
 import { presentPaywall } from '@/services/superwall';
 import { useIngredientStore } from '@/stores/ingredientStore';
 import { useUserStore } from '@/stores/userStore';

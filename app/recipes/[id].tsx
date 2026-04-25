@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Share as NativeShare } from 'react-native';
 import RecipeShareCard from '@/components/RecipeShareCard';
 import { isPro } from '@/services/purchases';
-import { generateFoodImage } from '@/services/openai';
+import { generateFoodImage } from '@/services/recipeImages';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -109,7 +109,7 @@ export default function RecipeDetailScreen() {
     return () => { active = false; };
   }, []);
 
-  const IMAGE_TTL_MS = 55 * 60 * 1000; // 55 min — DALL-E URLs expire at ~1 h
+  const IMAGE_TTL_MS = 55 * 60 * 1000;
 
   useEffect(() => {
     if (!recipe) return;
@@ -123,7 +123,7 @@ export default function RecipeDetailScreen() {
       return;
     }
 
-    generateFoodImage(recipe.name, recipe.aiReasoning ?? '')
+    generateFoodImage(recipe.name, recipe.selectionNote ?? '')
       .then((url) => {
         if (!active) return;
         setRecipeImage(recipe.id, url);
@@ -268,8 +268,8 @@ export default function RecipeDetailScreen() {
             <Text style={styles.matchLabel}> match</Text>
           </View>
           <Text style={styles.heroName}>{recipe.name}</Text>
-          {recipe.aiReasoning.length > 0 && (
-            <Text style={styles.heroReasoning}>{recipe.aiReasoning}</Text>
+          {recipe.selectionNote.length > 0 && (
+            <Text style={styles.heroReasoning}>{recipe.selectionNote}</Text>
           )}
         </View>
 

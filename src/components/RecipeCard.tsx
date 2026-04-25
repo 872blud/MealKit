@@ -98,10 +98,10 @@ export default function RecipeCard({
           )}
         </View>
 
-        {/* ── AI reasoning ─────────────────────────────────────────── */}
-        {recipe.aiReasoning.length > 0 && (
+        {/* ── Selection note ───────────────────────────────────────── */}
+        {recipe.selectionNote.length > 0 && (
           <Text style={styles.reasoning} numberOfLines={2}>
-            {recipe.aiReasoning}
+            {recipe.selectionNote}
           </Text>
         )}
 

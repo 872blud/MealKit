@@ -47,7 +47,7 @@ const VALUE_PROPS = [
     label: '02',
     eyebrow: '02 · COOK',
     title: 'Recipes from what you already have.',
-    body: 'Skip the grocery list. Sous, your personal AI chef, generates recipe ideas from whatever you scanned — matched to your taste.',
+    body: 'Skip the grocery list. Sous gives you recipe ideas from whatever you scanned, matched to your taste.',
     icon: 'restaurant-outline' as const,
     primaryGlow: 'amber' as GlowColor,
     secondaryGlow: 'green' as GlowColor,
