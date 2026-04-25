@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Dimensions,
+  Switch,
 } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -32,6 +33,11 @@ import {
 import { presentPaywall } from '@/services/superwall';
 import { isPro } from '@/services/purchases';
 import { sendFeedback } from '@/services/feedback';
+import {
+  addDeveloperLog,
+  DeveloperLogEntry,
+  useDeveloperStore,
+} from '@/stores/developerStore';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -136,9 +142,14 @@ function StaggerItem({ index, children }: { index: number; children: React.React
 export default function ScanHomeScreen() {
   const insets = useSafeAreaInsets();
   const { ingredients } = useIngredientStore();
-  const { scanCount, checkAndResetMonthly } = useUserStore();
+  const { scanCount, checkAndResetMonthly, setOnboardingComplete } = useUserStore();
+  const developerMode = useDeveloperStore((s) => s.enabled);
+  const developerLogs = useDeveloperStore((s) => s.logs);
+  const setDeveloperMode = useDeveloperStore((s) => s.setEnabled);
+  const clearDeveloperLogs = useDeveloperStore((s) => s.clearLogs);
   const [isProUser, setIsProUser] = useState(false);
   const [proStatusLoaded, setProStatusLoaded] = useState(false);
+  const brandTapRef = useRef({ count: 0, lastTappedAt: 0 });
   const scanLimit = getScanLimit();
   const betaMode = isBetaMode();
 
@@ -181,6 +192,25 @@ export default function ScanHomeScreen() {
     await presentPaywall('scan_limit_reached');
   };
 
+  const handleBrandPress = () => {
+    const now = Date.now();
+    const previous = brandTapRef.current;
+    const nextCount = now - previous.lastTappedAt > 1300 ? 1 : previous.count + 1;
+    brandTapRef.current = { count: nextCount, lastTappedAt: now };
+
+    if (nextCount < 5) return;
+
+    brandTapRef.current = { count: 0, lastTappedAt: now };
+    if (!developerMode) {
+      setDeveloperMode(true);
+      addDeveloperLog({
+        level: 'info',
+        source: 'Developer mode',
+        message: 'Developer mode enabled from hidden brand gesture.',
+      });
+    }
+  };
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <GlowBackground primary="green" secondary="amber" />
@@ -188,7 +218,14 @@ export default function ScanHomeScreen() {
 
       {/* ── Top bar ──────────────────────────────────────────── */}
       <View style={styles.topBar}>
-        <Text style={styles.brand}>MEALKIT</Text>
+        <PressableScale
+          onPress={handleBrandPress}
+          style={styles.brandTap}
+          accessibilityRole="button"
+          accessibilityLabel="Mealkit"
+        >
+          <Text style={styles.brand}>MEALKIT</Text>
+        </PressableScale>
         <UsagePill
           scanCount={scanCount}
           scanLimit={scanLimit}
@@ -197,6 +234,19 @@ export default function ScanHomeScreen() {
           onPress={openUpgrade}
         />
       </View>
+
+      {developerMode && (
+        <DeveloperPanel
+          enabled={developerMode}
+          logs={developerLogs}
+          onToggle={setDeveloperMode}
+          onClear={clearDeveloperLogs}
+          onRestartOnboarding={() => {
+            setOnboardingComplete(false);
+            router.replace('/onboarding');
+          }}
+        />
+      )}
 
       {/* ── Body — no ScrollView ──────────────────────────────── */}
       <View style={styles.body}>
@@ -314,6 +364,104 @@ export default function ScanHomeScreen() {
   );
 }
 
+// ─── Developer panel ────────────────────────────────────────────────────────
+
+function formatLogTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function DeveloperPanel({
+  enabled,
+  logs,
+  onToggle,
+  onClear,
+  onRestartOnboarding,
+}: {
+  enabled: boolean;
+  logs: DeveloperLogEntry[];
+  onToggle: (enabled: boolean) => void;
+  onClear: () => void;
+  onRestartOnboarding: () => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const latest = logs.slice(0, 3);
+
+  return (
+    <View style={styles.devPanel}>
+      {/* Header row — always visible */}
+      <PressableScale onPress={() => setCollapsed((c) => !c)} style={styles.devPanelHeader}>
+        <View>
+          <Text style={styles.devPanelTitle}>Developer Mode</Text>
+          <Text style={styles.devPanelSubtitle}>
+            {logs.length} {logs.length === 1 ? 'log' : 'logs'} captured
+          </Text>
+        </View>
+        <View style={styles.devPanelHeaderRight}>
+          <Ionicons
+            name={collapsed ? 'chevron-down' : 'chevron-up'}
+            size={16}
+            color={colors.textSecondary}
+            style={{ marginRight: 10 }}
+          />
+          <Switch
+            value={enabled}
+            onValueChange={onToggle}
+            trackColor={{ false: colors.surfaceElevated, true: colors.accentDim }}
+            thumbColor={enabled ? colors.accent : colors.textDisabled}
+          />
+        </View>
+      </PressableScale>
+
+      {/* Collapsible body */}
+      {!collapsed && (
+        <>
+          {latest.length === 0 ? (
+            <Text style={styles.devEmpty}>No logs yet. Trigger a recipe generation to capture API details.</Text>
+          ) : (
+            <View style={styles.devLogList}>
+              {latest.map((log) => (
+                <View key={log.id} style={styles.devLogRow}>
+                  <Text style={[styles.devLogLevel, styles[`devLogLevel_${log.level}`]]}>
+                    {log.level}
+                  </Text>
+                  <View style={styles.devLogBody}>
+                    <Text style={styles.devLogMeta}>
+                      {formatLogTime(log.createdAt)} · {log.source}
+                    </Text>
+                    <Text style={styles.devLogMessage}>{log.message}</Text>
+                    {log.details ? (
+                      <Text style={styles.devLogDetails} numberOfLines={3}>
+                        {log.details}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <View style={styles.devActions}>
+            <PressableScale onPress={onRestartOnboarding} style={styles.devActionBtn}>
+              <Ionicons name="refresh-outline" size={14} color={colors.accent} style={{ marginRight: 5 }} />
+              <Text style={styles.devClearText}>Restart Onboarding</Text>
+            </PressableScale>
+            {logs.length > 0 && (
+              <PressableScale onPress={onClear} style={styles.devActionBtn}>
+                <Text style={styles.devClearText}>Clear Logs</Text>
+              </PressableScale>
+            )}
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
 // ─── Mode row ────────────────────────────────────────────────────────────────
 
 function ModeRow({ def, disabled, onPress }: { def: ModeDef; disabled: boolean; onPress: () => void }) {
@@ -409,6 +557,98 @@ const styles = StyleSheet.create({
     ...typography.label,
     color: colors.textSecondary,
     letterSpacing: 2,
+  },
+  brandTap: {
+    minWidth: 80,
+    minHeight: 44,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  devPanel: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderStrong,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  devPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  devPanelTitle: {
+    ...typography.smallMedium,
+    color: colors.text,
+  },
+  devPanelSubtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  devEmpty: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  devLogList: {
+    gap: spacing.sm,
+  },
+  devLogRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  devLogLevel: {
+    ...typography.label,
+    minWidth: 38,
+    marginTop: 1,
+  },
+  devLogLevel_info: { color: colors.protein },
+  devLogLevel_warn: { color: colors.carb },
+  devLogLevel_error: { color: colors.error },
+  devLogBody: {
+    flex: 1,
+    gap: 2,
+  },
+  devLogMeta: {
+    ...typography.caption,
+    color: colors.textDisabled,
+  },
+  devLogMessage: {
+    ...typography.caption,
+    color: colors.text,
+  },
+  devLogDetails: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  devPanelHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  devActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    flexWrap: 'wrap',
+    marginTop: spacing.xs,
+  },
+  devActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 32,
+    justifyContent: 'center',
+  },
+  devClearBtn: {
+    alignSelf: 'flex-start',
+    minHeight: 32,
+    justifyContent: 'center',
+  },
+  devClearText: {
+    ...typography.caption,
+    color: colors.accent,
   },
   usagePill: {
     flexDirection: 'row',

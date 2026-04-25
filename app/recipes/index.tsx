@@ -25,6 +25,7 @@ import { generateRecipes } from '@/services/claude';
 import { getRecipeLimit } from '@/config/limits';
 import { isPro } from '@/services/purchases';
 import { presentPaywall } from '@/services/superwall';
+import { useDeveloperStore } from '@/stores/developerStore';
 import {
   trackRecipesScreenViewed,
   trackRecipeSwiped,
@@ -52,6 +53,7 @@ export default function RecipesScreen() {
   const insets = useSafeAreaInsets();
   const { ingredients } = useIngredientStore();
   const { preferences } = useUserStore();
+  const developerMode = useDeveloperStore((s) => s.enabled);
   const {
     recipes,
     loading,
@@ -92,9 +94,10 @@ export default function RecipesScreen() {
         const f = overrideFilters ?? filters;
         setLoading(true);
         setError(null);
-        const result = await generateRecipes(ingredients, f, preferences);
+        const generation = await generateRecipes(ingredients, f, preferences);
+        const result = generation.recipes;
         if (result.length === 0) {
-          setError('Could not generate recipes right now.');
+          setError(generation.error ?? 'Could not generate recipes right now.');
           setRecipes([]);
         } else {
           setRecipes(result);
@@ -210,7 +213,7 @@ export default function RecipesScreen() {
         <EmptyState
           icon="cloud-offline-outline"
           title="Couldn't generate recipes"
-          body="Check your connection and try again."
+          body={developerMode ? error : 'Check your connection and try again.'}
           action={{ label: 'Try again', onPress: () => runGenerate() }}
         />
       ) : recipes.length === 0 ? (

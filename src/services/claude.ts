@@ -7,6 +7,53 @@ import {
   trackRecipeGenerationSucceeded,
   trackRecipeGenerationFailed,
 } from '@/services/analytics';
+import { addDeveloperLog } from '@/stores/developerStore';
+
+export interface RecipeGenerationResult {
+  recipes: Recipe[];
+  error: string | null;
+  debugDetails: string | null;
+}
+
+interface RecipeGenerationError extends Error {
+  debugDetails?: string;
+}
+
+function trimDebugDetails(value: string): string {
+  return value.length > 1200 ? `${value.slice(0, 1200)}...` : value;
+}
+
+function buildApiError(status: number, responseText: string): RecipeGenerationError {
+  let message = `Anthropic API ${status}`;
+  try {
+    const parsed = JSON.parse(responseText) as {
+      error?: { message?: string; type?: string };
+    };
+    if (parsed.error?.message) {
+      message = `Anthropic API ${status}: ${parsed.error.message}`;
+    }
+  } catch {
+    if (responseText.trim().length > 0) {
+      message = `Anthropic API ${status}: ${responseText.trim().slice(0, 180)}`;
+    }
+  }
+
+  const error = new Error(message) as RecipeGenerationError;
+  error.debugDetails = trimDebugDetails(responseText);
+  return error;
+}
+
+function normalizeError(error: unknown): { message: string; details: string | null } {
+  if (error instanceof Error) {
+    const debugDetails = (error as RecipeGenerationError).debugDetails;
+    return {
+      message: error.message,
+      details: typeof debugDetails === 'string' ? debugDetails : null,
+    };
+  }
+
+  return { message: String(error), details: null };
+}
 
 function getKey(): string {
   return (Constants.expoConfig?.extra as Record<string, string> | undefined)?.anthropicApiKey ?? '';
@@ -146,9 +193,10 @@ async function callAPI(prompt: string, apiKey: string): Promise<Recipe[]> {
     });
 
     clearTimeout(timeout);
-    if (!response.ok) throw new Error(`Anthropic API error ${response.status}`);
+    const responseText = await response.text();
+    if (!response.ok) throw buildApiError(response.status, responseText);
 
-    const data = await response.json();
+    const data = JSON.parse(responseText);
     const text: string = data.content?.[0]?.text ?? '';
 
     // Non-greedy match to extract JSON array — consistent with Phase 2 pattern
@@ -169,26 +217,93 @@ export async function generateRecipes(
   ingredients: Ingredient[],
   filters: RecipeFilters,
   preferences: UserPreferences
-): Promise<Recipe[]> {
+): Promise<RecipeGenerationResult> {
   const apiKey = getKey();
-  if (!apiKey || ingredients.length === 0) return [];
+  if (!apiKey) {
+    const message = 'Missing ANTHROPIC_API_KEY in Expo config.';
+    addDeveloperLog({
+      level: 'error',
+      source: 'Recipe generation',
+      message,
+    });
+    return { recipes: [], error: message, debugDetails: null };
+  }
+
+  if (ingredients.length === 0) {
+    const message = 'Recipe generation skipped because ingredient list is empty.';
+    addDeveloperLog({
+      level: 'warn',
+      source: 'Recipe generation',
+      message,
+    });
+    return { recipes: [], error: message, debugDetails: null };
+  }
 
   const prompt = buildPrompt(ingredients, filters, preferences);
   trackRecipeGenerationStarted(ingredients.length);
+  addDeveloperLog({
+    level: 'info',
+    source: 'Recipe generation',
+    message: 'Starting Anthropic recipe generation.',
+    details: `ingredients=${ingredients.length}; filters=${JSON.stringify(filters)}`,
+  });
 
   try {
     const recipes = await callAPI(prompt, apiKey);
     trackRecipeGenerationSucceeded(recipes.length);
-    return recipes;
-  } catch {
+    addDeveloperLog({
+      level: recipes.length > 0 ? 'info' : 'warn',
+      source: 'Recipe generation',
+      message:
+        recipes.length > 0
+          ? `Generated ${recipes.length} recipes.`
+          : 'Anthropic returned no valid recipes.',
+    });
+    return {
+      recipes,
+      error: recipes.length > 0 ? null : 'Anthropic returned no valid recipes.',
+      debugDetails: null,
+    };
+  } catch (firstError) {
+    const first = normalizeError(firstError);
+    addDeveloperLog({
+      level: 'warn',
+      source: 'Recipe generation',
+      message: `${first.message}. Retrying once.`,
+      details: first.details ?? undefined,
+    });
+
     // Retry once on failure
     try {
       const recipes = await callAPI(prompt, apiKey);
       trackRecipeGenerationSucceeded(recipes.length);
-      return recipes;
-    } catch {
+      addDeveloperLog({
+        level: recipes.length > 0 ? 'info' : 'warn',
+        source: 'Recipe generation',
+        message:
+          recipes.length > 0
+            ? `Retry generated ${recipes.length} recipes.`
+            : 'Retry returned no valid recipes.',
+      });
+      return {
+        recipes,
+        error: recipes.length > 0 ? null : 'Anthropic retry returned no valid recipes.',
+        debugDetails: null,
+      };
+    } catch (secondError) {
+      const second = normalizeError(secondError);
       trackRecipeGenerationFailed();
-      return [];
+      addDeveloperLog({
+        level: 'error',
+        source: 'Recipe generation',
+        message: second.message,
+        details: second.details ?? first.details ?? undefined,
+      });
+      return {
+        recipes: [],
+        error: second.message,
+        debugDetails: second.details ?? first.details,
+      };
     }
   }
 }
