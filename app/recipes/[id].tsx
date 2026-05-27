@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Share as NativeShare } from 'react-native';
 import RecipeShareCard from '@/components/RecipeShareCard';
 import { isPro } from '@/services/purchases';
@@ -10,22 +10,19 @@ import * as Haptics from 'expo-haptics';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
-import { useRecipeStore } from '@/stores/recipeStore';
-import { useNutritionStore } from '@/stores/nutritionStore';
-import { useUserStore } from '@/stores/userStore';
+import { useRecipeStore, type Recipe } from '@/stores/recipeStore';
 import {
   trackRecipeDetailViewed,
   trackCookingStarted,
   trackCookingStepAdvanced,
   trackServingsAdjusted,
   trackMealCooked,
+  trackRecipeShared,
 } from '@/services/analytics';
 import PressableScale from '@/components/PressableScale';
 import EmptyState from '@/components/EmptyState';
 import MacroChip from '@/components/MacroChip';
 import CookingMode from '@/components/CookingMode';
-import { getLocalDateKey } from '@/utils/date';
-
 const MIN_SERVINGS = 1;
 const MAX_SERVINGS = 16;
 
@@ -79,18 +76,10 @@ const DIFFICULTY_LABEL: Record<string, string> = {
 
 export default function RecipeDetailScreen() {
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const recipes = useRecipeStore((s) => s.recipes);
-  const recipeImages = useRecipeStore((s) => s.recipeImages);
-  const setRecipeImage = useRecipeStore((s) => s.setRecipeImage);
-  const recipe = recipes.find((r) => r.id === id);
-  const logMeal = useNutritionStore((s) => s.logMeal);
-  const getDailyTotals = useNutritionStore((s) => s.getDailyTotals);
-  const preferences = useUserStore((s) => s.preferences);
+  const { id, fromHistory } = useLocalSearchParams<{ id: string; fromHistory?: string }>();
+  const sessionRecipe = useRecipeStore((s) => s.recipes.find((r) => r.id === id));
+  const recipe = sessionRecipe ?? (fromHistory ? JSON.parse(fromHistory) as Recipe : undefined);
 
-  const shareCardRef = useRef<View>(null);
-  const [foodImageUrl, setFoodImageUrl] = useState<string | null>(null);
-  const [isProUser, setIsProUser] = useState(false);
   const [userServings, setUserServings] = useState<number>(recipe?.servings ?? 2);
   const [cooking, setCooking] = useState(false);
   const [hasCooked, setHasCooked] = useState(false);
@@ -155,32 +144,20 @@ export default function RecipeDetailScreen() {
 
   const handleShare = useCallback(async () => {
     if (!recipe) return;
-    const fallbackMessage = `I just cooked ${recipe.name} with Mealkit!`;
-
-    try {
-      await new Promise<void>((r) => requestAnimationFrame(() => r()));
-      const { captureRef } = await import('react-native-view-shot');
-      const shareModule = await import('react-native-share');
-      const shareSheet = shareModule.default;
-      const uri = await captureRef(shareCardRef, {
-        format: 'png',
-        quality: 1,
-        result: 'tmpfile',
-      });
-      await shareSheet.open({
-        url: uri,
-        type: 'image/png',
-        message: fallbackMessage,
-        title: recipe.name,
-        failOnCancel: false,
-      });
-    } catch {
-      await NativeShare.share({
-        title: recipe.name,
-        message: fallbackMessage,
-      }).catch(() => {});
+    Haptics.selectionAsync().catch(() => {});
+    const totalTime = recipe.cookTime + recipe.prepTime;
+    const lines: string[] = [
+      `I just made ${recipe.name} with Mealkit!`,
+      '',
+      `${totalTime} min · ${recipe.nutrition.calories} kcal · ${DIFFICULTY_LABEL[recipe.difficulty]}`,
+    ];
+    if (recipe.aiReasoning) {
+      lines.push('', recipe.aiReasoning);
     }
-  }, [recipe, shareCardRef]);
+    lines.push('', 'Try Mealkit — scan your groceries, get AI recipes instantly.');
+    trackRecipeShared(recipe.id);
+    await NativeShare.share({ message: lines.join('\n') }).catch(() => {});
+  }, [recipe]);
 
   const handleStartCooking = useCallback(() => {
     if (!recipe) return;
@@ -199,25 +176,10 @@ export default function RecipeDetailScreen() {
 
   const handleMarkAsCooked = useCallback(async () => {
     if (!recipe) return;
-    const today = getLocalDateKey();
-    logMeal({
-      recipeId: recipe.id,
-      recipeName: recipe.name,
-      servings: userServings,
-      date: today,
-      macros: {
-        calories: recipe.nutrition.calories,
-        protein: recipe.nutrition.protein,
-        carbs: recipe.nutrition.carbs,
-        fat: recipe.nutrition.fat,
-        fiber: recipe.nutrition.fiber,
-        sugar: recipe.nutrition.sugar,
-      },
-    });
     trackMealCooked(recipe.id, userServings);
     setCooking(false);
     setHasCooked(true);
-  }, [recipe, userServings, logMeal]);
+  }, [recipe, userServings]);
 
   if (!recipe) {
     return (
@@ -237,12 +199,11 @@ export default function RecipeDetailScreen() {
     );
   }
 
-  const multiplier = userServings / recipe.servings;
+  const multiplier = recipe.servings > 0 ? userServings / recipe.servings : 1;
   const totalTime = recipe.cookTime + recipe.prepTime;
   const matchPercent = Math.round(recipe.ingredientMatch.percent);
   const canDec = userServings > MIN_SERVINGS;
   const canInc = userServings < MAX_SERVINGS;
-  const today = getLocalDateKey();
 
   return (
     <View style={styles.container}>
@@ -326,17 +287,6 @@ export default function RecipeDetailScreen() {
             />
           </View>
         </Section>
-
-        {/* ── How this fits your day ──────────────────────── */}
-        <FitCard
-          addCalories={recipe.nutrition.calories * userServings}
-          addProtein={recipe.nutrition.protein * userServings}
-          addCarbs={recipe.nutrition.carbs * userServings}
-          addFat={recipe.nutrition.fat * userServings}
-          current={getDailyTotals(today)}
-          calorieTarget={preferences.dailyCalorieTarget}
-          macroTargets={preferences.dailyMacroTargets}
-        />
 
         {/* ── Ingredients ─────────────────────────────────── */}
         <Section
@@ -428,19 +378,6 @@ export default function RecipeDetailScreen() {
         onStepAdvanced={handleStepAdvanced}
       />
 
-      {/* ── Offscreen share card — captured by view-shot ──── */}
-      <View
-        ref={shareCardRef}
-        collapsable={false}
-        pointerEvents="none"
-        style={{ position: 'absolute', top: -10000, left: 0, opacity: 1 }}
-      >
-        <RecipeShareCard
-          recipe={recipe}
-          imageUrl={foodImageUrl}
-          showWatermark={!isProUser}
-        />
-      </View>
     </View>
   );
 }
@@ -481,137 +418,6 @@ function Stat({
       <Ionicons name={icon} size={16} color={colors.textSecondary} />
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value}</Text>
-    </View>
-  );
-}
-
-function FitCard({
-  addCalories,
-  addProtein,
-  addCarbs,
-  addFat,
-  current,
-  calorieTarget,
-  macroTargets,
-}: {
-  addCalories: number;
-  addProtein: number;
-  addCarbs: number;
-  addFat: number;
-  current: { calories: number; protein: number; carbs: number; fat: number };
-  calorieTarget: number;
-  macroTargets: { protein: number; carbs: number; fat: number };
-}) {
-  const projCal = current.calories + addCalories;
-  const overCal = projCal > calorieTarget;
-  const remainingCal = Math.round(calorieTarget - projCal);
-
-  return (
-    <View style={styles.fitCard}>
-      <View style={styles.fitHeader}>
-        <Ionicons name="pulse-outline" size={16} color={colors.accent} />
-        <Text style={styles.fitTitle}>How this fits today</Text>
-      </View>
-      <View style={styles.fitCalRow}>
-        <View style={styles.fitCalMain}>
-          <Text style={styles.fitCalAdd}>
-            +<Text style={styles.fitCalAddNum}>{Math.round(addCalories)}</Text> kcal
-          </Text>
-          <Text style={styles.fitCalAfter}>
-            brings you to{' '}
-            <Text style={styles.fitCalAfterNum}>{Math.round(projCal)}</Text>
-            {' / '}
-            <Text style={styles.fitCalAfterTarget}>{calorieTarget}</Text>
-          </Text>
-        </View>
-        <View
-          style={[
-            styles.fitPill,
-            overCal ? styles.fitPillOver : styles.fitPillOk,
-          ]}
-        >
-          <Text
-            style={[
-              styles.fitPillText,
-              overCal ? styles.fitPillTextOver : styles.fitPillTextOk,
-            ]}
-          >
-            {overCal
-              ? `${Math.abs(remainingCal)} over`
-              : `${Math.max(0, remainingCal)} left`}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.fitMiniBars}>
-        <FitMiniBar
-          label="P"
-          color={colors.protein}
-          bg={colors.proteinDim}
-          current={current.protein}
-          added={addProtein}
-          target={macroTargets.protein}
-        />
-        <FitMiniBar
-          label="C"
-          color={colors.carb}
-          bg={colors.carbDim}
-          current={current.carbs}
-          added={addCarbs}
-          target={macroTargets.carbs}
-        />
-        <FitMiniBar
-          label="F"
-          color={colors.fat}
-          bg={colors.fatDim}
-          current={current.fat}
-          added={addFat}
-          target={macroTargets.fat}
-        />
-      </View>
-    </View>
-  );
-}
-
-function FitMiniBar({
-  label,
-  color,
-  bg,
-  current,
-  added,
-  target,
-}: {
-  label: string;
-  color: string;
-  bg: string;
-  current: number;
-  added: number;
-  target: number;
-}) {
-  const pCurrent = target > 0 ? Math.min(1, current / target) : 0;
-  const pProjected = target > 0 ? Math.min(1, (current + added) / target) : 0;
-
-  return (
-    <View style={styles.fitMini}>
-      <View style={styles.fitMiniHeader}>
-        <Text style={[styles.fitMiniLabel, { color }]}>{label}</Text>
-        <Text style={styles.fitMiniAdd}>
-          +{Math.round(added)}g
-        </Text>
-      </View>
-      <View style={[styles.fitMiniTrack, { backgroundColor: bg }]}>
-        <View
-          style={[
-            styles.fitMiniFillCurrent,
-            { backgroundColor: color, opacity: 0.45, width: `${pCurrent * 100}%` },
-          ]}
-        />
-        <View
-          style={[
-            styles.fitMiniFillProjected,
-            { backgroundColor: color, width: `${pProjected * 100}%` },
-          ]}
-        />
-      </View>
     </View>
   );
 }
@@ -797,116 +603,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-  },
-  fitCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: spacing.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    gap: spacing.md,
-  },
-  fitHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  fitTitle: {
-    ...typography.smallMedium,
-    color: colors.textSecondary,
-  },
-  fitCalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  fitCalMain: {
-    flex: 1,
-    gap: 2,
-  },
-  fitCalAdd: {
-    ...typography.heading,
-    color: colors.accent,
-  },
-  fitCalAddNum: {
-    ...typography.heading,
-    color: colors.accent,
-    fontVariant: ['tabular-nums'],
-  },
-  fitCalAfter: {
-    ...typography.small,
-    color: colors.textSecondary,
-  },
-  fitCalAfterNum: {
-    ...typography.smallMedium,
-    color: colors.text,
-    fontVariant: ['tabular-nums'],
-  },
-  fitCalAfterTarget: {
-    ...typography.smallMedium,
-    color: colors.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
-  fitPill: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 100,
-  },
-  fitPillOk: {
-    backgroundColor: colors.accentDim,
-  },
-  fitPillOver: {
-    backgroundColor: colors.errorDim,
-  },
-  fitPillText: {
-    ...typography.monoSmall,
-  },
-  fitPillTextOk: {
-    color: colors.accent,
-  },
-  fitPillTextOver: {
-    color: colors.error,
-  },
-  fitMiniBars: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  fitMini: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  fitMiniHeader: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-  },
-  fitMiniLabel: {
-    ...typography.monoSmall,
-  },
-  fitMiniAdd: {
-    ...typography.monoSmall,
-    color: colors.textSecondary,
-    fontSize: 11,
-  },
-  fitMiniTrack: {
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  fitMiniFillCurrent: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    borderRadius: 3,
-  },
-  fitMiniFillProjected: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    borderRadius: 3,
   },
   ingredientList: {
     gap: spacing.sm,
