@@ -30,6 +30,7 @@ import {
   TIMING_TOGGLE,
 } from '@/theme/animations';
 import { Recipe } from '@/stores/recipeStore';
+import { useCookedStore } from '@/stores/cookedStore';
 import PressableScale from './PressableScale';
 
 const { height: SCREEN_H } = Dimensions.get('window');
@@ -71,6 +72,8 @@ export default function CookingMode({
 
   // Keep the screen on while cooking mode is mounted
   useKeepAwake();
+
+  const addCooked = useCookedStore((s) => s.addCooked);
 
   const translateY = useSharedValue(SCREEN_H);
   const progressSV = useSharedValue(0);
@@ -190,23 +193,29 @@ export default function CookingMode({
     setTimerSeconds(null);
   }, []);
 
+  const finishTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (finishTimeoutRef.current) clearTimeout(finishTimeoutRef.current);
+    };
+  }, []);
+
   const handleFinish = useCallback(() => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
-      () => {}
-    );
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    addCooked(recipe);
     celebrateOpacity.value = withTiming(1, TIMING_ENTER);
     celebrateScale.value = withSequence(
       withTiming(1, TIMING_ENTER),
       withDelay(650, withTiming(1.02, { duration: 140 })),
       withTiming(1, { duration: 180 })
     );
-    // Log the meal + dismiss after the animation settles
-    setTimeout(() => {
+    finishTimeoutRef.current = setTimeout(() => {
       onMarkAsCooked();
       celebrateOpacity.value = withTiming(0, TIMING_EXIT);
       celebrateScale.value = withTiming(0.95, TIMING_EXIT);
     }, 1400);
-  }, [celebrateOpacity, celebrateScale, onMarkAsCooked]);
+  }, [addCooked, recipe, celebrateOpacity, celebrateScale, onMarkAsCooked]);
 
   const panelStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
