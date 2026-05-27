@@ -17,10 +17,16 @@ const TABS = [
     inactiveIcon: 'scan-outline' as const,
   },
   {
-    name: 'nutrition',
-    label: 'Nutrition',
-    activeIcon: 'nutrition' as const,
-    inactiveIcon: 'nutrition-outline' as const,
+    name: 'history',
+    label: 'History',
+    activeIcon: 'time' as const,
+    inactiveIcon: 'time-outline' as const,
+  },
+  {
+    name: 'settings',
+    label: 'Settings',
+    activeIcon: 'settings' as const,
+    inactiveIcon: 'settings-outline' as const,
   },
 ] as const;
 
