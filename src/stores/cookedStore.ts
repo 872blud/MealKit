@@ -28,7 +28,7 @@ export const useCookedStore = create<CookedStore>()(
           entries: [
             { id: makeId(), recipe, cookedAt: new Date().toISOString() },
             ...state.entries,
-          ],
+          ].slice(0, 100),
         })),
       clearHistory: () => set({ entries: [] }),
     }),
