@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { colors } from '@/theme/colors';
@@ -8,7 +9,7 @@ import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { useUserStore } from '@/stores/userStore';
 import { getScanLimit, getRecipeLimit } from '@/config/limits';
-import { isPro, presentPaywall } from '@/services/superwall';
+import { isPro, presentPaywall } from '@/services/purchases';
 import { sendFeedback } from '@/services/feedback';
 import GlowBackground from '@/components/GlowBackground';
 import PressableScale from '@/components/PressableScale';
@@ -55,9 +56,15 @@ export default function SettingsScreen() {
   const recipeLimit = getRecipeLimit();
   const appVersion = Constants.expoConfig?.version ?? '—';
 
-  useEffect(() => {
-    isPro().then(setProUser).catch(() => setProUser(false));
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      let active = true;
+      void isPro()
+        .then((pro) => { if (active) { setProUser(pro); } })
+        .catch(() => { if (active) { setProUser(false); } });
+      return () => { active = false; };
+    }, [])
+  );
 
   const toggleDiet = (option: string) => {
     const current = preferences.dietaryRestrictions;
@@ -68,7 +75,7 @@ export default function SettingsScreen() {
   };
 
   const handleRestore = async () => {
-    Alert.alert('Restore Purchases', 'Restoring your purchases…');
+    Alert.alert('Restore Purchases', 'Purchase restoration will be available in a future update.');
   };
 
   return (
