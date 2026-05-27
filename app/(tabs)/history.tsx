@@ -1,6 +1,6 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/theme/colors';
@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     minHeight: 60,
   },
-  rowLeft: { flex: 1, gap: 3 },
+  rowLeft: { flex: 1, gap: spacing.xs },
   rowName: { ...typography.bodyMedium, color: colors.text },
   rowMeta: { ...typography.small, color: colors.textSecondary },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: spacing.lg },
