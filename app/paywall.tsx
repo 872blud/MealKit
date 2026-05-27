@@ -29,12 +29,7 @@ import {
   trackPaywallPurchaseStarted,
   trackPaywallRestoreTapped,
 } from '@/services/analytics';
-import { type PurchasesPackage } from 'react-native-purchases';
-import {
-  getOfferings,
-  purchasePackage,
-  restorePurchases,
-} from '@/services/purchases';
+import { presentPaywall } from '@/services/superwall';
 
 type Plan = 'annual' | 'monthly';
 
@@ -48,13 +43,6 @@ const PLANS: PlanInfo[] = [
   { key: 'monthly', label: 'Monthly' },
 ];
 
-function formatCurrency(amount: number, currencyCode: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currencyCode }).format(amount);
-  } catch {
-    return `$${amount.toFixed(2)}`;
-  }
-}
 
 const VALUE_PROPS = [
   'Unlimited scans',
@@ -98,58 +86,21 @@ function StaggerItem({
 
 // ─── Screen ─────────────────────────────────────────────────────────────────
 
+const STATIC_PRICES: Record<Plan, { price: string; sub: string | null; badge: string | null }> = {
+  annual:  { price: '$39.99 / yr', sub: '$3.33 / mo', badge: 'Save 44%' },
+  monthly: { price: '$5.99 / mo', sub: 'Billed monthly', badge: null },
+};
+
 export default function PaywallScreen() {
   const insets = useSafeAreaInsets();
   const [plan, setPlan] = useState<Plan>('annual');
   const [purchasing, setPurchasing] = useState(false);
-  const [packages, setPackages] = useState<{ annual?: PurchasesPackage; monthly?: PurchasesPackage }>({});
-  const [offeringsLoaded, setOfferingsLoaded] = useState(false);
 
   useEffect(() => {
     trackPaywallImpression('fallback');
   }, []);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const offerings = await getOfferings();
-        const offering = offerings?.current ?? Object.values(offerings?.all ?? {})[0];
-        if (offering) {
-          setPackages({
-            annual: offering.annual ?? undefined,
-            monthly: offering.monthly ?? undefined,
-          });
-        }
-      } catch {}
-      setOfferingsLoaded(true);
-    })();
-  }, []);
-
-  // Auto-select first available plan once offerings load
-  useEffect(() => {
-    if (!offeringsLoaded) return;
-    if (!packages[plan]) {
-      const first = PLANS.find((p) => !!packages[p.key]);
-      if (first) setPlan(first.key);
-    }
-  }, [offeringsLoaded, packages, plan]);
-
   const selected = PLANS.find((p) => p.key === plan) ?? PLANS[0];
-
-  // All price/badge strings derived from live RC packages — never hardcoded
-  const annualPriceString = packages.annual?.product.priceString;
-  const monthlyPriceString = packages.monthly?.product.priceString;
-  const annualPerMonth = packages.annual
-    ? `${formatCurrency(packages.annual.product.price / 12, packages.annual.product.currencyCode)} / mo`
-    : null;
-  const savingsBadge = (() => {
-    const a = packages.annual;
-    const m = packages.monthly;
-    if (!a || !m) return null;
-    if (a.product.currencyCode !== m.product.currencyCode) return null;
-    const pct = Math.round((1 - a.product.price / (m.product.price * 12)) * 100);
-    return pct > 0 ? `Save ${pct}%` : null;
-  })();
 
   const handleClose = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
@@ -169,55 +120,22 @@ export default function PaywallScreen() {
   const handleSubscribe = useCallback(async () => {
     Haptics.selectionAsync().catch(() => {});
     trackPaywallPurchaseStarted(plan);
-    const selectedPackage = plan === 'annual' ? packages.annual : packages.monthly;
-    if (!selectedPackage) {
-      Alert.alert(
-        'Subscriptions unavailable',
-        'No subscription packages are currently available. Please try again later.',
-      );
-      return;
-    }
     setPurchasing(true);
     try {
-      await purchasePackage(selectedPackage);
+      await presentPaywall('paywall_fallback');
       handleClose();
     } catch {
-      Alert.alert(
-        'Purchase failed',
-        'We could not complete the subscription purchase. Please try again.',
-      );
+      Alert.alert('Purchase failed', 'We could not complete the purchase. Please try again.');
     } finally {
       setPurchasing(false);
     }
-  }, [handleClose, plan, packages]);
+  }, [handleClose, plan]);
 
-  const handleRestore = useCallback(async () => {
+  const handleRestore = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
     trackPaywallRestoreTapped();
-    try {
-      const customerInfo = await restorePurchases();
-      if (!customerInfo) {
-        Alert.alert(
-          'Restore unavailable',
-          'Purchases are not available on this build yet. Please try again later.',
-        );
-        return;
-      }
-
-      if (customerInfo?.entitlements.active.pro?.isActive) {
-        Alert.alert('Purchases restored', 'Your Mealkit Pro access has been restored.');
-        handleClose();
-        return;
-      }
-
-      Alert.alert('Nothing to restore', 'No previous Mealkit Pro purchase was found.');
-    } catch {
-      Alert.alert(
-        'Restore failed',
-        'We could not restore purchases right now. Please try again.',
-      );
-    }
-  }, [handleClose]);
+    Alert.alert('Restore Purchases', 'Purchase restoration is handled automatically by Superwall.');
+  }, []);
 
   const handleOpenUrl = useCallback((url: string) => {
     Linking.openURL(url).catch(() => {});
@@ -274,55 +192,43 @@ export default function PaywallScreen() {
 
         {/* Plan selector */}
         <StaggerItem index={7}>
-          {offeringsLoaded && !packages.annual && !packages.monthly ? (
-            <Text style={styles.plansUnavailable}>
-              Subscriptions are not available right now. Please try again later.
-            </Text>
-          ) : (
-            <View style={styles.planList}>
-              {(offeringsLoaded ? PLANS.filter((p) => !!packages[p.key]) : PLANS).map((p) => {
-                const active = plan === p.key;
-                const priceStr = p.key === 'annual' ? annualPriceString : monthlyPriceString;
-                const badge = p.key === 'annual' ? savingsBadge : null;
-                const sub = p.key === 'annual'
-                  ? annualPerMonth ?? (offeringsLoaded ? null : '—')
-                  : 'Billed monthly';
-                return (
-                  <Pressable
-                    key={p.key}
-                    onPress={() => handleSelect(p.key)}
-                    style={[styles.planRow, active && styles.planRowActive]}
-                  >
-                    <View style={styles.planRadio}>
-                      {active && <View style={styles.planRadioDot} />}
+          <View style={styles.planList}>
+            {PLANS.map((p) => {
+              const active = plan === p.key;
+              const { price, sub, badge } = STATIC_PRICES[p.key];
+              return (
+                <Pressable
+                  key={p.key}
+                  onPress={() => handleSelect(p.key)}
+                  style={[styles.planRow, active && styles.planRowActive]}
+                >
+                  <View style={styles.planRadio}>
+                    {active && <View style={styles.planRadioDot} />}
+                  </View>
+                  <View style={styles.planText}>
+                    <View style={styles.planHeader}>
+                      <Text style={styles.planLabel}>{p.label}</Text>
+                      {badge ? (
+                        <View style={styles.planBadge}>
+                          <Text style={styles.planBadgeText}>{badge}</Text>
+                        </View>
+                      ) : null}
                     </View>
-                    <View style={styles.planText}>
-                      <View style={styles.planHeader}>
-                        <Text style={styles.planLabel}>{p.label}</Text>
-                        {badge ? (
-                          <View style={styles.planBadge}>
-                            <Text style={styles.planBadgeText}>{badge}</Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      <Text style={styles.planPrice}>
-                        {priceStr ?? '—'}
-                      </Text>
-                      {sub ? <Text style={styles.planSub}>{sub}</Text> : null}
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
+                    <Text style={styles.planPrice}>{price}</Text>
+                    {sub ? <Text style={styles.planSub}>{sub}</Text> : null}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
         </StaggerItem>
 
         {/* Primary CTA */}
         <StaggerItem index={8}>
           <PressableScale
             onPress={handleSubscribe}
-            disabled={!offeringsLoaded || purchasing || !packages[plan]}
-            style={[styles.cta, (!offeringsLoaded || purchasing || !packages[plan]) && styles.ctaDisabled]}
+            disabled={purchasing}
+            style={[styles.cta, purchasing && styles.ctaDisabled]}
           >
             <Text style={styles.ctaLabel}>
               {purchasing ? 'Connecting…' : `Continue with ${selected?.label ?? 'Pro'}`}

@@ -88,7 +88,11 @@ function bindListeners(): void {
   listenersBound = true;
 }
 
-export function configureSuperwallWithRevenueCat(): void {
+export async function isPro(): Promise<boolean> {
+  return false;
+}
+
+export function configureSuperwall(): void {
   if (isConfigured || !superwallNative) return;
 
   const apiKey = getSuperwallKey();

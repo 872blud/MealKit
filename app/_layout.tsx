@@ -22,8 +22,7 @@ import {
 import { colors } from '@/theme/colors';
 import { useUserStore } from '@/stores/userStore';
 import { posthog } from '@/services/analytics';
-import { configurePurchases } from '@/services/purchases';
-import { configureSuperwallWithRevenueCat } from '@/services/superwall';
+import { configureSuperwall } from '@/services/superwall';
 
 const sentryDsn = Constants.expoConfig?.extra?.sentryDsn;
 
@@ -52,8 +51,7 @@ function RootLayout() {
 
   useEffect(() => {
     useUserStore.getState().checkAndResetMonthly();
-    configurePurchases();
-    configureSuperwallWithRevenueCat();
+    configureSuperwall();
   }, []);
 
   if (!fontsLoaded && !fontError) return null;
