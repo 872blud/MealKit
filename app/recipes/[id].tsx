@@ -74,11 +74,15 @@ const DIFFICULTY_LABEL: Record<string, string> = {
   hard: 'Hard',
 };
 
+function safeParseRecipe(raw: string): Recipe | undefined {
+  try { return JSON.parse(raw) as Recipe; } catch { return undefined; }
+}
+
 export default function RecipeDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id, fromHistory } = useLocalSearchParams<{ id: string; fromHistory?: string }>();
   const sessionRecipe = useRecipeStore((s) => s.recipes.find((r) => r.id === id));
-  const recipe = sessionRecipe ?? (fromHistory ? JSON.parse(fromHistory) as Recipe : undefined);
+  const recipe = sessionRecipe ?? (fromHistory ? safeParseRecipe(fromHistory) : undefined);
 
   const [userServings, setUserServings] = useState<number>(recipe?.servings ?? 2);
   const [cooking, setCooking] = useState(false);
